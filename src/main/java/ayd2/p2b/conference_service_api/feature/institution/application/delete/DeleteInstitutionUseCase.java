@@ -7,10 +7,13 @@ import ayd2.p2b.conference_service_api.feature.institution.domain.model.Institut
 import ayd2.p2b.conference_service_api.feature.institution.dto.response.InstitutionResponse;
 import ayd2.p2b.conference_service_api.feature.institution.mapper.InstitutionMapper;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Component
+@Transactional
 public class DeleteInstitutionUseCase {
 
     private final InstitutionRepositoryPort institutionRepositoryPort;
@@ -36,9 +39,12 @@ public class DeleteInstitutionUseCase {
         }
 
         if (institution.isActive()) {
-            institution.setActive(false);
-            institution.setUpdatedBy(actorId);
-            institution = institutionRepositoryPort.save(institution);
+            Institution institutionToSave = institution.toBuilder()
+                    .active(false)
+                    .updatedBy(actorId)
+                    .updatedAt(LocalDateTime.now())
+                    .build();
+            institution = institutionRepositoryPort.save(institutionToSave);
         }
 
         return institutionMapper.toResponse(institution);

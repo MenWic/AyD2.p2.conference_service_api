@@ -7,13 +7,16 @@ import ayd2.p2b.conference_service_api.feature.institution.dto.request.UpdateIns
 import ayd2.p2b.conference_service_api.feature.institution.dto.response.InstitutionResponse;
 import ayd2.p2b.conference_service_api.feature.institution.mapper.InstitutionMapper;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static ayd2.p2b.conference_service_api.feature.institution.application.InstitutionInputValidator.optionalTrimmed;
 import static ayd2.p2b.conference_service_api.feature.institution.application.InstitutionInputValidator.validateEmailOptional;
 
 @Component
+@Transactional
 public class UpdateInstitutionUseCase {
 
     private final InstitutionRepositoryPort institutionRepositoryPort;
@@ -39,18 +42,15 @@ public class UpdateInstitutionUseCase {
             throw InstitutionExceptions.nameConflict(nextName);
         }
 
-        if (nextName != null) {
-            institution.setName(nextName);
-        }
-        if (nextDescription != null) {
-            institution.setDescription(nextDescription);
-        }
-        if (nextContactEmail != null) {
-            institution.setContactEmail(nextContactEmail);
-        }
-        institution.setUpdatedBy(actorId);
+        Institution institutionToSave = institution.toBuilder()
+                .name(nextName != null ? nextName : institution.getName())
+                .description(nextDescription != null ? nextDescription : institution.getDescription())
+                .contactEmail(nextContactEmail != null ? nextContactEmail : institution.getContactEmail())
+                .updatedBy(actorId)
+                .updatedAt(LocalDateTime.now())
+                .build();
 
-        Institution saved = institutionRepositoryPort.save(institution);
+        Institution saved = institutionRepositoryPort.save(institutionToSave);
         return institutionMapper.toResponse(saved);
     }
 }

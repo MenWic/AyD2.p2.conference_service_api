@@ -50,8 +50,9 @@ class CreateInstitutionUseCaseTest {
         when(repositoryPort.existsByName("USAC")).thenReturn(false);
         when(repositoryPort.save(any())).thenAnswer(invocation -> {
             Institution institution = invocation.getArgument(0);
-            institution.setId(UUID.randomUUID());
-            return institution;
+            return institution.toBuilder()
+                    .id(UUID.randomUUID())
+                    .build();
         });
         when(mapper.toResponse(any())).thenAnswer(invocation -> {
             Institution institution = invocation.getArgument(0);

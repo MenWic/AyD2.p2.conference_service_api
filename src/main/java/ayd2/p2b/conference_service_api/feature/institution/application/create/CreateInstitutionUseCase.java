@@ -7,6 +7,7 @@ import ayd2.p2b.conference_service_api.feature.institution.dto.request.CreateIns
 import ayd2.p2b.conference_service_api.feature.institution.dto.response.InstitutionResponse;
 import ayd2.p2b.conference_service_api.feature.institution.mapper.InstitutionMapper;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
@@ -14,6 +15,7 @@ import static ayd2.p2b.conference_service_api.feature.institution.application.In
 import static ayd2.p2b.conference_service_api.feature.institution.application.InstitutionInputValidator.validateEmailRequired;
 
 @Component
+@Transactional
 public class CreateInstitutionUseCase {
 
     private final InstitutionRepositoryPort institutionRepositoryPort;

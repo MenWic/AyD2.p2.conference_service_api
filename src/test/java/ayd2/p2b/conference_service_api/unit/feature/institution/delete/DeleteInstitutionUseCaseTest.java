@@ -82,6 +82,9 @@ class DeleteInstitutionUseCaseTest {
         Institution saved = captor.getValue();
         assertThat(saved.isActive()).isFalse();
         assertThat(saved.getUpdatedBy()).isEqualTo(actorId);
+        assertThat(saved.getUpdatedAt()).isNotNull();
+        assertThat(saved).isNotSameAs(institution);
+        assertThat(institution.isActive()).isTrue();
         assertThat(response.isActive()).isFalse();
     }
 

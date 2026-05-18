@@ -7,8 +7,10 @@ import ayd2.p2b.conference_service_api.feature.institution.mapper.InstitutionMap
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@Transactional(readOnly = true)
 public class ListInstitutionsUseCase {
 
     private final InstitutionRepositoryPort institutionRepositoryPort;

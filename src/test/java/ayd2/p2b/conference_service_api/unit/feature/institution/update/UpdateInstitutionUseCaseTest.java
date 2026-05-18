@@ -9,6 +9,7 @@ import ayd2.p2b.conference_service_api.feature.institution.mapper.InstitutionMap
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -19,6 +20,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -66,6 +68,7 @@ class UpdateInstitutionUseCaseTest {
     @Test
     void shouldUpdateProvidedFields() {
         UUID institutionId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
         Institution institution = Institution.builder()
                 .id(institutionId)
                 .name("USAC")
@@ -90,8 +93,16 @@ class UpdateInstitutionUseCaseTest {
         UpdateInstitutionRequest request = UpdateInstitutionRequest.builder()
                 .name("USAC Updated")
                 .build();
-        var response = useCase.execute(institutionId, request, UUID.randomUUID());
+        var response = useCase.execute(institutionId, request, actorId);
+
+        ArgumentCaptor<Institution> captor = ArgumentCaptor.forClass(Institution.class);
+        verify(repositoryPort).save(captor.capture());
+        Institution saved = captor.getValue();
 
         assertThat(response.getName()).isEqualTo("USAC Updated");
+        assertThat(saved.getUpdatedBy()).isEqualTo(actorId);
+        assertThat(saved.getUpdatedAt()).isNotNull();
+        assertThat(saved).isNotSameAs(institution);
+        assertThat(institution.getName()).isEqualTo("USAC");
     }
 }

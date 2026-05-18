@@ -5,10 +5,12 @@ import ayd2.p2b.conference_service_api.feature.institution.domain.exception.Inst
 import ayd2.p2b.conference_service_api.feature.institution.dto.response.InstitutionResponse;
 import ayd2.p2b.conference_service_api.feature.institution.mapper.InstitutionMapper;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
 @Component
+@Transactional(readOnly = true)
 public class GetInstitutionUseCase {
 
     private final InstitutionRepositoryPort institutionRepositoryPort;
