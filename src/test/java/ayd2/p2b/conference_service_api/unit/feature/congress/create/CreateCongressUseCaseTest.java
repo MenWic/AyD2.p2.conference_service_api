@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.unit.feature.congress.create;
 
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.core.security.Role;
+import ayd2.p2b.conference_service_api.feature.congress.application.exception.CongressExceptions;
 import ayd2.p2b.conference_service_api.feature.congress.application.create.CreateCongressUseCase;
 import ayd2.p2b.conference_service_api.feature.congress.application.port.CongressInstitutionPort;
 import ayd2.p2b.conference_service_api.feature.congress.application.port.CongressRepositoryPort;
@@ -137,6 +138,24 @@ class CreateCongressUseCaseTest {
         assertThat(saved.getDescription()).isEqualTo("Descripcion A2");
         assertThat(saved.getLocation()).isEqualTo("Guatemala");
         assertThat(response.getInstitutionName()).isEqualTo("USAC");
+    }
+
+    @Test
+    void shouldPropagateIamUnavailableAsServiceUnavailable() {
+        UUID institutionId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        when(congressInstitutionPort.findActiveInstitutionById(institutionId))
+                .thenReturn(Optional.of(InstitutionSummary.builder().id(institutionId).name("USAC").build()));
+        when(iamUserLookupPort.isCongressAdminLinkedToInstitution(actorId, institutionId, "token"))
+                .thenThrow(CongressExceptions.iamUnavailable());
+
+        assertThatThrownBy(() -> useCase.execute(sampleRequest(institutionId), requester(actorId, Set.of(Role.CONGRESS_ADMIN))))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
     }
 
     private CreateCongressRequest sampleRequest(UUID institutionId) {

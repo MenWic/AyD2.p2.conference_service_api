@@ -1,10 +1,8 @@
-package ayd2.p2b.conference_service_api.feature.congress.domain.exception;
+package ayd2.p2b.conference_service_api.feature.congress.application.exception;
 
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import org.springframework.http.HttpStatus;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -53,19 +51,11 @@ public final class CongressExceptions {
         );
     }
 
-    public static ApiException invariantViolation(String message) {
+    public static ApiException iamUnavailable() {
         return new ApiException(
-                HttpStatus.UNPROCESSABLE_ENTITY,
-                "domain.invariant_violated",
-                message
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "integration.iam_unavailable",
+                "IAM service is currently unavailable"
         );
-    }
-
-    public static ApiException priceTooLow(BigDecimal minPrice) {
-        return invariantViolation("price must be >= " + minPrice);
-    }
-
-    public static ApiException invalidDateRange(LocalDate startDate, LocalDate endDate) {
-        return invariantViolation("startDate must be <= endDate. startDate=" + startDate + ", endDate=" + endDate);
     }
 }

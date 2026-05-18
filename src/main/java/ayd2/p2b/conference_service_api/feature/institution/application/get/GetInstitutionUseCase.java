@@ -1,7 +1,7 @@
 package ayd2.p2b.conference_service_api.feature.institution.application.get;
 
 import ayd2.p2b.conference_service_api.feature.institution.application.port.InstitutionRepositoryPort;
-import ayd2.p2b.conference_service_api.feature.institution.domain.exception.InstitutionExceptions;
+import ayd2.p2b.conference_service_api.feature.institution.application.exception.InstitutionExceptions;
 import ayd2.p2b.conference_service_api.feature.institution.dto.response.InstitutionResponse;
 import ayd2.p2b.conference_service_api.feature.institution.mapper.InstitutionMapper;
 import org.springframework.stereotype.Component;

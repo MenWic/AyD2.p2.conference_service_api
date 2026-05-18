@@ -1,6 +1,8 @@
 package ayd2.p2b.conference_service_api.integration.client;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
+import ayd2.p2b.conference_service_api.common.exception.ApiException;
+import ayd2.p2b.conference_service_api.feature.congress.application.exception.CongressExceptions;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserResponse;
 import ayd2.p2b.conference_service_api.integration.port.IamUserLookupPort;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,6 +11,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.UUID;
 
@@ -29,6 +32,7 @@ public class IamUserLookupClient implements IamUserLookupPort {
         if (accessToken == null || accessToken.isBlank()) {
             return false;
         }
+
         try {
             ApiResponse<IamUserResponse> response = restClient.get()
                     .uri("/users/{id}", userId)
@@ -37,12 +41,26 @@ public class IamUserLookupClient implements IamUserLookupPort {
                     .body(new ParameterizedTypeReference<>() {
                     });
 
-            if (response == null || response.getData() == null || response.getData().getLinkedInstitutions() == null) {
+            if (response == null || response.getData() == null) {
+                throw CongressExceptions.iamUnavailable();
+            }
+
+            if (response.getData().getLinkedInstitutions() == null) {
                 return false;
             }
+
             return response.getData().getLinkedInstitutions().contains(institutionId);
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() == 404) {
+                return false;
+            }
+            throw CongressExceptions.iamUnavailable();
         } catch (RestClientException ex) {
-            return false;
+            throw CongressExceptions.iamUnavailable();
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw CongressExceptions.iamUnavailable();
         }
     }
 }

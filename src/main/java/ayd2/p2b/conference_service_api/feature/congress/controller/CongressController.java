@@ -3,12 +3,12 @@ package ayd2.p2b.conference_service_api.feature.congress.controller;
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
+import ayd2.p2b.conference_service_api.feature.congress.application.exception.CongressExceptions;
 import ayd2.p2b.conference_service_api.feature.congress.application.create.CreateCongressUseCase;
 import ayd2.p2b.conference_service_api.feature.congress.application.delete.DeleteCongressUseCase;
 import ayd2.p2b.conference_service_api.feature.congress.application.get.GetCongressUseCase;
 import ayd2.p2b.conference_service_api.feature.congress.application.list.ListCongressesUseCase;
 import ayd2.p2b.conference_service_api.feature.congress.application.update.UpdateCongressUseCase;
-import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressExceptions;
 import ayd2.p2b.conference_service_api.feature.congress.dto.internal.CongressRequesterContext;
 import ayd2.p2b.conference_service_api.feature.congress.dto.internal.CongressSearchCriteria;
 import ayd2.p2b.conference_service_api.feature.congress.dto.request.CreateCongressRequest;
@@ -100,7 +100,13 @@ public class CongressController {
     }
 
     @GetMapping
-    @Operation(summary = "List congresses")
+    @Operation(
+            summary = "List congresses",
+            responses = {
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Congresses listed"),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content)
+            }
+    )
     public ResponseEntity<ApiResponse<PageResponse<CongressResponse>>> listCongresses(
             @RequestParam(required = false) UUID institutionId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDateFrom,
@@ -126,7 +132,13 @@ public class CongressController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get congress by id")
+    @Operation(
+            summary = "Get congress by id",
+            responses = {
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Congress found"),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found", content = @Content)
+            }
+    )
     public ResponseEntity<ApiResponse<CongressResponse>> getCongress(@PathVariable UUID id) {
         CongressResponse response = getCongressUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.of(response));

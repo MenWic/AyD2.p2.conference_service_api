@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.unit.feature.congress.update;
 
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.core.security.Role;
+import ayd2.p2b.conference_service_api.feature.congress.application.exception.CongressExceptions;
 import ayd2.p2b.conference_service_api.feature.congress.application.port.CongressInstitutionPort;
 import ayd2.p2b.conference_service_api.feature.congress.application.port.CongressRepositoryPort;
 import ayd2.p2b.conference_service_api.feature.congress.application.update.UpdateCongressUseCase;
@@ -148,6 +149,30 @@ class UpdateCongressUseCaseTest {
         assertThat(saved.getUpdatedBy()).isEqualTo(actorId);
         assertThat(saved.getUpdatedAt()).isNotNull();
         assertThat(response.getInstitutionName()).isEqualTo("USAC");
+    }
+
+    @Test
+    void shouldPropagateIamUnavailableAsServiceUnavailable() {
+        UUID congressId = UUID.randomUUID();
+        UUID institutionId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        Congress existing = sampleCongress(congressId, institutionId, actorId);
+
+        when(congressRepositoryPort.findById(congressId)).thenReturn(Optional.of(existing));
+        when(iamUserLookupPort.isCongressAdminLinkedToInstitution(actorId, institutionId, "token"))
+                .thenThrow(CongressExceptions.iamUnavailable());
+
+        assertThatThrownBy(() -> useCase.execute(
+                congressId,
+                UpdateCongressRequest.builder().name("Nuevo").build(),
+                requester(actorId)
+        ))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
     }
 
     private Congress sampleCongress(UUID congressId, UUID institutionId, UUID createdBy) {

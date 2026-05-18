@@ -79,4 +79,23 @@ class ListCongressesUseCaseTest {
         assertThat(response.getTotalItems()).isEqualTo(1);
         assertThat(response.getTotalPages()).isEqualTo(1);
     }
+
+    @Test
+    void shouldReturnEmptyPageResponseWhenNoRecordsMatch() {
+        CongressSearchCriteria criteria = CongressSearchCriteria.builder()
+                .search("no-match")
+                .build();
+        PageRequest pageable = PageRequest.of(1, 10);
+
+        when(congressRepositoryPort.findPublicByCriteria(eq(criteria), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        PageResponse<CongressResponse> response = useCase.execute(criteria, pageable);
+
+        assertThat(response.getItems()).isEmpty();
+        assertThat(response.getPage()).isEqualTo(1);
+        assertThat(response.getSize()).isEqualTo(10);
+        assertThat(response.getTotalItems()).isZero();
+        assertThat(response.getTotalPages()).isZero();
+    }
 }

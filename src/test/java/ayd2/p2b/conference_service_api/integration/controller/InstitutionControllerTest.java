@@ -9,9 +9,11 @@ import ayd2.p2b.conference_service_api.feature.institution.dto.response.Institut
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -22,8 +24,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -99,6 +103,14 @@ class InstitutionControllerTest {
                         .content("{\"name\":\"USAC\",\"description\":\"Public\",\"contactEmail\":\"admin@usac.edu.gt\"}"))
                 .andExpect(status().isUnauthorized());
 
+        mockMvc.perform(put("/institutions/{id}", institutionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Updated\"}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(delete("/institutions/{id}", institutionId))
+                .andExpect(status().isUnauthorized());
+
         mockMvc.perform(post("/institutions")
                         .header("Authorization", "Bearer " + participantToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -114,6 +126,49 @@ class InstitutionControllerTest {
         mockMvc.perform(delete("/institutions/{id}", institutionId)
                         .header("Authorization", "Bearer " + participantToken))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldNormalizeInstitutionPaginationBoundaries() throws Exception {
+        when(listInstitutionsUseCase.execute(any())).thenReturn(
+                ayd2.p2b.conference_service_api.common.response.PageResponse.<InstitutionResponse>builder()
+                        .items(List.of())
+                        .page(0)
+                        .size(20)
+                        .totalItems(0)
+                        .totalPages(0)
+                        .build()
+        );
+
+        mockMvc.perform(get("/institutions?page=-10&size=0"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(listInstitutionsUseCase).execute(pageableCaptor.capture());
+        Pageable pageable = pageableCaptor.getValue();
+        assertThat(pageable.getPageNumber()).isEqualTo(0);
+        assertThat(pageable.getPageSize()).isEqualTo(20);
+    }
+
+    @Test
+    void shouldCapInstitutionPaginationSizeToOneHundred() throws Exception {
+        when(listInstitutionsUseCase.execute(any())).thenReturn(
+                ayd2.p2b.conference_service_api.common.response.PageResponse.<InstitutionResponse>builder()
+                        .items(List.of())
+                        .page(0)
+                        .size(100)
+                        .totalItems(0)
+                        .totalPages(0)
+                        .build()
+        );
+
+        mockMvc.perform(get("/institutions?page=1&size=999"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(listInstitutionsUseCase).execute(pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(100);
+        assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(1);
     }
 
     @Test

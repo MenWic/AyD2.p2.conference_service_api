@@ -1,7 +1,7 @@
 package ayd2.p2b.conference_service_api.feature.congress.application.get;
 
 import ayd2.p2b.conference_service_api.feature.congress.application.port.CongressRepositoryPort;
-import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressExceptions;
+import ayd2.p2b.conference_service_api.feature.congress.application.exception.CongressExceptions;
 import ayd2.p2b.conference_service_api.feature.congress.dto.response.CongressResponse;
 import ayd2.p2b.conference_service_api.feature.congress.mapper.CongressMapper;
 import org.springframework.stereotype.Component;

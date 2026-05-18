@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.unit.feature.congress.delete;
 
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.core.security.Role;
+import ayd2.p2b.conference_service_api.feature.congress.application.exception.CongressExceptions;
 import ayd2.p2b.conference_service_api.feature.congress.application.delete.DeleteCongressUseCase;
 import ayd2.p2b.conference_service_api.feature.congress.application.port.CongressDeletionGuardPort;
 import ayd2.p2b.conference_service_api.feature.congress.application.port.CongressInstitutionPort;
@@ -109,6 +110,26 @@ class DeleteCongressUseCaseTest {
         verify(congressRepositoryPort).deleteById(congressId);
         assertThat(response.getId()).isEqualTo(congressId);
         assertThat(response.getInstitutionName()).isEqualTo("USAC");
+    }
+
+    @Test
+    void shouldPropagateIamUnavailableAsServiceUnavailable() {
+        UUID congressId = UUID.randomUUID();
+        UUID institutionId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Congress existing = sampleCongress(congressId, institutionId, ownerId);
+
+        when(congressRepositoryPort.findById(congressId)).thenReturn(Optional.of(existing));
+        when(iamUserLookupPort.isCongressAdminLinkedToInstitution(ownerId, institutionId, "token"))
+                .thenThrow(CongressExceptions.iamUnavailable());
+
+        assertThatThrownBy(() -> useCase.execute(congressId, requester(ownerId)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
     }
 
     private Congress sampleCongress(UUID congressId, UUID institutionId, UUID createdBy) {

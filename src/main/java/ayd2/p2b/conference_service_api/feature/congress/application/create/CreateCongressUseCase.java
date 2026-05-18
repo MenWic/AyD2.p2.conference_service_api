@@ -3,7 +3,7 @@ package ayd2.p2b.conference_service_api.feature.congress.application.create;
 import ayd2.p2b.conference_service_api.feature.congress.application.port.CongressInstitutionPort;
 import ayd2.p2b.conference_service_api.feature.congress.application.port.CongressRepositoryPort;
 import ayd2.p2b.conference_service_api.feature.congress.application.support.CongressAccessPolicy;
-import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressExceptions;
+import ayd2.p2b.conference_service_api.feature.congress.application.exception.CongressExceptions;
 import ayd2.p2b.conference_service_api.feature.congress.domain.model.Congress;
 import ayd2.p2b.conference_service_api.feature.congress.dto.internal.CongressRequesterContext;
 import ayd2.p2b.conference_service_api.feature.congress.dto.internal.InstitutionSummary;

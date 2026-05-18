@@ -40,4 +40,19 @@ class JwtTokenParserTest {
                     assertThat(apiException.getCode()).isEqualTo("auth.token_invalid");
                 });
     }
+
+    @Test
+    void shouldRejectMalformedToken() {
+        JwtProperties properties = new JwtProperties();
+        properties.setSecret("test_secret_key_with_at_least_32_chars");
+        JwtTokenParser parser = new JwtTokenParser(properties);
+
+        assertThatThrownBy(() -> parser.parseAccessToken("invalid.token.value"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                    assertThat(apiException.getCode()).isEqualTo("auth.token_invalid");
+                });
+    }
 }

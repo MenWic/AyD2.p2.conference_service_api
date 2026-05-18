@@ -1,4 +1,4 @@
-package ayd2.p2b.conference_service_api.feature.institution.domain.exception;
+package ayd2.p2b.conference_service_api.feature.institution.application.exception;
 
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import org.springframework.http.HttpStatus;

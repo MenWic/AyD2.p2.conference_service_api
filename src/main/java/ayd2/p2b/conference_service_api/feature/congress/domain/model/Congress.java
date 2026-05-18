@@ -1,6 +1,6 @@
 package ayd2.p2b.conference_service_api.feature.congress.domain.model;
 
-import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressExceptions;
+import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressDomainException;
 import lombok.Builder;
 import lombok.Value;
 
@@ -35,13 +35,15 @@ public class Congress {
 
     public static void validatePrice(BigDecimal price) {
         if (price == null || price.compareTo(MIN_PRICE) < 0) {
-            throw CongressExceptions.priceTooLow(MIN_PRICE);
+            throw new CongressDomainException("price must be >= " + MIN_PRICE);
         }
     }
 
     public static void validateDates(LocalDate startDate, LocalDate endDate) {
         if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
-            throw CongressExceptions.invalidDateRange(startDate, endDate);
+            throw new CongressDomainException(
+                    "startDate must be <= endDate. startDate=" + startDate + ", endDate=" + endDate
+            );
         }
     }
 }

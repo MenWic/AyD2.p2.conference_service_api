@@ -1,6 +1,6 @@
 package ayd2.p2b.conference_service_api.feature.congress.application;
 
-import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressExceptions;
+import ayd2.p2b.conference_service_api.feature.congress.application.exception.CongressExceptions;
 
 public final class CongressInputValidator {
 

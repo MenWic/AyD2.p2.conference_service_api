@@ -1,6 +1,7 @@
 package ayd2.p2b.conference_service_api.common.exception;
 
 import jakarta.validation.ConstraintViolationException;
+import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressDomainException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.validation.FieldError;
@@ -39,6 +40,16 @@ public class GlobalExceptionHandler {
                 "Validation failed"
         );
         detail.setProperty("code", "validation.failed");
+        return detail;
+    }
+
+    @ExceptionHandler(CongressDomainException.class)
+    public ProblemDetail handleCongressDomainException(CongressDomainException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                ex.getMessage()
+        );
+        detail.setProperty("code", "domain.invariant_violated");
         return detail;
     }
 

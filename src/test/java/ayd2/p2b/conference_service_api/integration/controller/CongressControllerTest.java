@@ -10,9 +10,11 @@ import ayd2.p2b.conference_service_api.feature.congress.dto.response.CongressRes
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -25,8 +27,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -98,6 +102,14 @@ class CongressControllerTest {
                         .content(createPayload()))
                 .andExpect(status().isUnauthorized());
 
+        mockMvc.perform(put("/congresses/{id}", congressId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Nuevo\"}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(delete("/congresses/{id}", congressId))
+                .andExpect(status().isUnauthorized());
+
         mockMvc.perform(post("/congresses")
                         .header("Authorization", "Bearer " + participantToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -108,6 +120,16 @@ class CongressControllerTest {
                         .header("Authorization", "Bearer " + systemAdminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createPayload()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(put("/congresses/{id}", congressId)
+                        .header("Authorization", "Bearer " + systemAdminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Nuevo\"}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(delete("/congresses/{id}", congressId)
+                        .header("Authorization", "Bearer " + systemAdminToken))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(put("/congresses/{id}", congressId)
@@ -151,6 +173,75 @@ class CongressControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.institutionName").value("USAC"))
                 .andExpect(jsonPath("$.message").value("Congress deleted"));
+
+        verify(createCongressUseCase).execute(any(), any());
+        verify(updateCongressUseCase).execute(eq(response.getId()), any(), any());
+        verify(deleteCongressUseCase).execute(eq(response.getId()), any());
+    }
+
+    @Test
+    void shouldRejectUnknownRoleTokenWithoutServerError() throws Exception {
+        String unknownRoleToken = tokenWithRoles(List.of("UNKNOWN_ROLE"));
+
+        mockMvc.perform(post("/congresses")
+                        .header("Authorization", "Bearer " + unknownRoleToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createPayload()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldRejectMalformedTokenWithoutServerError() throws Exception {
+        mockMvc.perform(post("/congresses")
+                        .header("Authorization", "Bearer invalid.token.value")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createPayload()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldReturnValidationFailedForInvalidDateRange() throws Exception {
+        mockMvc.perform(get("/congresses?startDateFrom=2026-10-20&startDateTo=2026-10-10"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation.failed"));
+    }
+
+    @Test
+    void shouldNormalizeCongressPaginationBoundaries() throws Exception {
+        when(listCongressesUseCase.execute(any(), any())).thenReturn(PageResponse.<CongressResponse>builder()
+                .items(List.of())
+                .page(0)
+                .size(20)
+                .totalItems(0)
+                .totalPages(0)
+                .build());
+
+        mockMvc.perform(get("/congresses?page=-1&size=0"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(listCongressesUseCase).execute(any(), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(0);
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(20);
+    }
+
+    @Test
+    void shouldCapCongressPaginationSizeToOneHundred() throws Exception {
+        when(listCongressesUseCase.execute(any(), any())).thenReturn(PageResponse.<CongressResponse>builder()
+                .items(List.of())
+                .page(0)
+                .size(100)
+                .totalItems(0)
+                .totalPages(0)
+                .build());
+
+        mockMvc.perform(get("/congresses?page=2&size=999"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(listCongressesUseCase).execute(any(), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(2);
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(100);
     }
 
     private CongressResponse sampleResponse() {
