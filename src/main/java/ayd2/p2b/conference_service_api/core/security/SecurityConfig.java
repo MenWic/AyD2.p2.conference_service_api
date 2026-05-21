@@ -33,6 +33,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/institutions", "/institutions/*").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/congresses", "/congresses/*").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/congresses/*/rooms", "/rooms/*").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/congresses/*/activities", "/activities/*").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

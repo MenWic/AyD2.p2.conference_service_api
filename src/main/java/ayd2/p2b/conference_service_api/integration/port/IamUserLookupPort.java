@@ -1,7 +1,13 @@
 package ayd2.p2b.conference_service_api.integration.port;
 
+import ayd2.p2b.conference_service_api.integration.dto.IamUserSummary;
+
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public interface IamUserLookupPort {
     boolean isCongressAdminLinkedToInstitution(UUID userId, UUID institutionId, String accessToken);
+
+    Map<UUID, IamUserSummary> getUsersSummary(Set<UUID> userIds, String accessToken);
 }

@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.unit.integration.client;
 
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.integration.client.IamUserLookupClient;
+import ayd2.p2b.conference_service_api.integration.dto.IamUserSummary;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -11,6 +12,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -168,5 +171,96 @@ class IamUserLookupClientTest {
         );
 
         assertThat(linked).isFalse();
+    }
+
+    @Test
+    void shouldReturnUserSummaryMapWhenUsersExist() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer token"))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "id": "%s",
+                            "active": true,
+                            "roles": ["PARTICIPANT", "GUEST_SPEAKER"],
+                            "linkedInstitutions": []
+                          }
+                        }
+                        """.formatted(userId),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        Map<UUID, IamUserSummary> summaries =
+                client.getUsersSummary(Set.of(userId), "token");
+
+        assertThat(summaries).containsKey(userId);
+        assertThat(summaries.get(userId).isActive()).isTrue();
+        assertThat(summaries.get(userId).getRoles()).contains("PARTICIPANT", "GUEST_SPEAKER");
+        server.verify();
+    }
+
+    @Test
+    void shouldSkipLeaderWhenIamReturnsForbiddenOrNotFound() {
+        UUID forbiddenUser = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID foundUser = UUID.fromString("00000000-0000-0000-0000-000000000002");
+
+        server.expect(requestTo(BASE_URL + "/users/" + forbiddenUser))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN));
+        server.expect(requestTo(BASE_URL + "/users/" + foundUser))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "id": "%s",
+                            "active": true,
+                            "roles": ["PARTICIPANT"],
+                            "linkedInstitutions": []
+                          }
+                        }
+                        """.formatted(foundUser),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        Map<UUID, IamUserSummary> summaries =
+                client.getUsersSummary(Set.of(forbiddenUser, foundUser), "token");
+
+        assertThat(summaries).containsOnlyKeys(foundUser);
+        server.verify();
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenSummaryWrapperIsInvalid() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId))
+                .andRespond(withSuccess("{\"message\":\"ok\"}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.getUsersSummary(Set.of(userId), "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableForSummaryOnTechnicalFailure() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        assertThatThrownBy(() -> client.getUsersSummary(Set.of(userId), "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
     }
 }

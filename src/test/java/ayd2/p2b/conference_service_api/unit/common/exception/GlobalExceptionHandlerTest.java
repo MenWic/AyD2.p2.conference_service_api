@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.unit.common.exception;
 
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.common.exception.GlobalExceptionHandler;
+import ayd2.p2b.conference_service_api.feature.activity.domain.exception.ActivityDomainException;
 import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressDomainException;
 import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
@@ -67,6 +68,16 @@ class GlobalExceptionHandlerTest {
 
         assertThat(detail.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY.value());
         assertThat(detail.getDetail()).isEqualTo("price must be >= 35.00");
+        assertThat(detail.getProperties()).containsEntry("code", "domain.invariant_violated");
+    }
+
+    @Test
+    void shouldMapActivityDomainException() {
+        ActivityDomainException ex = new ActivityDomainException("startTime must be before endTime");
+
+        ProblemDetail detail = handler.handleActivityDomainException(ex);
+
+        assertThat(detail.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY.value());
         assertThat(detail.getProperties()).containsEntry("code", "domain.invariant_violated");
     }
 

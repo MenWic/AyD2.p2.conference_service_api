@@ -10,6 +10,7 @@ import org.mapstruct.Mapping;
 public interface CongressMapper {
     Congress toDomain(CongressEntity entity);
 
+    @Mapping(target = "institution", ignore = true)
     CongressEntity toEntity(Congress congress);
 
     @Mapping(target = "institutionName", source = "institutionName")
