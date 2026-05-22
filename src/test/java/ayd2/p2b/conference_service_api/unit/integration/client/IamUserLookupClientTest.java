@@ -185,6 +185,8 @@ class IamUserLookupClientTest {
                         {
                           "data": {
                             "id": "%s",
+                            "fullName": "Ada Lovelace",
+                            "email": "ada@example.com",
                             "active": true,
                             "roles": ["PARTICIPANT", "GUEST_SPEAKER"],
                             "linkedInstitutions": []
@@ -199,6 +201,8 @@ class IamUserLookupClientTest {
 
         assertThat(summaries).containsKey(userId);
         assertThat(summaries.get(userId).isActive()).isTrue();
+        assertThat(summaries.get(userId).getFullName()).isEqualTo("Ada Lovelace");
+        assertThat(summaries.get(userId).getEmail()).isEqualTo("ada@example.com");
         assertThat(summaries.get(userId).getRoles()).contains("PARTICIPANT", "GUEST_SPEAKER");
         server.verify();
     }
@@ -216,6 +220,8 @@ class IamUserLookupClientTest {
                         {
                           "data": {
                             "id": "%s",
+                            "fullName": "Grace Hopper",
+                            "email": "grace@example.com",
                             "active": true,
                             "roles": ["PARTICIPANT"],
                             "linkedInstitutions": []
@@ -256,6 +262,147 @@ class IamUserLookupClientTest {
                 .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
 
         assertThatThrownBy(() -> client.getUsersSummary(Set.of(userId), "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldReturnCommitteeCandidateSummaryWhenEligibleAndProfilePresent() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId + "/can-be-committee"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer token"))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "eligible": true,
+                            "userId": "%s",
+                            "fullName": "Ada Lovelace",
+                            "email": "ada@example.com"
+                          }
+                        }
+                        """.formatted(userId),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        var summary = client.getCommitteeCandidateSummary(userId, "token");
+
+        assertThat(summary.isEligible()).isTrue();
+        assertThat(summary.getUserId()).isEqualTo(userId);
+        assertThat(summary.getFullName()).isEqualTo("Ada Lovelace");
+        assertThat(summary.getEmail()).isEqualTo("ada@example.com");
+        server.verify();
+    }
+
+    @Test
+    void shouldReturnIneligibleCommitteeCandidateWithoutRequiringProfileFields() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId + "/can-be-committee"))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "eligible": false
+                          }
+                        }
+                        """,
+                        MediaType.APPLICATION_JSON
+                ));
+
+        var summary = client.getCommitteeCandidateSummary(userId, "token");
+
+        assertThat(summary.isEligible()).isFalse();
+        assertThat(summary.getUserId()).isEqualTo(userId);
+        assertThat(summary.getFullName()).isNull();
+        assertThat(summary.getEmail()).isNull();
+        server.verify();
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenCommitteeEligibilityWrapperIsInvalid() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId + "/can-be-committee"))
+                .andRespond(withSuccess("{\"message\":\"ok\"}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.getCommitteeCandidateSummary(userId, "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenEligibleCandidateProfileIsMissing() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId + "/can-be-committee"))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "eligible": true,
+                            "userId": "%s"
+                          }
+                        }
+                        """.formatted(userId),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        assertThatThrownBy(() -> client.getCommitteeCandidateSummary(userId, "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenCommitteeEligibilityReturnsForbiddenOrNotFound() {
+        UUID forbiddenUser = UUID.fromString("00000000-0000-0000-0000-000000000010");
+        UUID missingUser = UUID.fromString("00000000-0000-0000-0000-000000000011");
+
+        server.expect(requestTo(BASE_URL + "/users/" + forbiddenUser + "/can-be-committee"))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN));
+        server.expect(requestTo(BASE_URL + "/users/" + missingUser + "/can-be-committee"))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        assertThatThrownBy(() -> client.getCommitteeCandidateSummary(forbiddenUser, "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+
+        assertThatThrownBy(() -> client.getCommitteeCandidateSummary(missingUser, "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+        server.verify();
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenCommitteeEligibilityOnTechnicalFailure() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId + "/can-be-committee"))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        assertThatThrownBy(() -> client.getCommitteeCandidateSummary(userId, "token"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> {
                     ApiException apiException = (ApiException) ex;

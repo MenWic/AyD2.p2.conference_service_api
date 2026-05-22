@@ -3,6 +3,8 @@ package ayd2.p2b.conference_service_api.integration.client;
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.integration.exception.IntegrationExceptions;
+import ayd2.p2b.conference_service_api.integration.dto.IamCommitteeCandidateSummary;
+import ayd2.p2b.conference_service_api.integration.dto.IamCommitteeEligibilityResponse;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserResponse;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserSummary;
 import ayd2.p2b.conference_service_api.integration.port.IamUserLookupPort;
@@ -64,9 +66,59 @@ public class IamUserLookupClient implements IamUserLookupPort {
     }
 
     @Override
+    public IamCommitteeCandidateSummary getCommitteeCandidateSummary(UUID userId, String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            throw IntegrationExceptions.iamUnavailable("Bearer token is required for IAM committee validation");
+        }
+
+        try {
+            ApiResponse<IamCommitteeEligibilityResponse> response = fetchCommitteeEligibility(userId, accessToken);
+            if (response == null || response.getData() == null || response.getData().getEligible() == null) {
+                throw IntegrationExceptions.iamUnavailable();
+            }
+            IamCommitteeEligibilityResponse data = response.getData();
+            boolean eligible = Boolean.TRUE.equals(data.getEligible());
+            if (!eligible) {
+                return IamCommitteeCandidateSummary.builder()
+                        .eligible(false)
+                        .userId(userId)
+                        .build();
+            }
+
+            if (data.getUserId() == null
+                    || !userId.equals(data.getUserId())
+                    || data.getFullName() == null
+                    || data.getFullName().isBlank()
+                    || data.getEmail() == null
+                    || data.getEmail().isBlank()) {
+                throw IntegrationExceptions.iamUnavailable();
+            }
+
+            return IamCommitteeCandidateSummary.builder()
+                    .eligible(true)
+                    .userId(data.getUserId())
+                    .fullName(data.getFullName())
+                    .email(data.getEmail())
+                    .build();
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            if (status == 403 || status == 404) {
+                throw IntegrationExceptions.iamUnavailable();
+            }
+            throw IntegrationExceptions.iamUnavailable();
+        } catch (RestClientException ex) {
+            throw IntegrationExceptions.iamUnavailable();
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw IntegrationExceptions.iamUnavailable();
+        }
+    }
+
+    @Override
     public Map<UUID, IamUserSummary> getUsersSummary(Set<UUID> userIds, String accessToken) {
         if (accessToken == null || accessToken.isBlank()) {
-            throw IntegrationExceptions.iamUnavailable("Bearer token is required for IAM leader validation");
+            throw IntegrationExceptions.iamUnavailable("Bearer token is required for IAM user summary lookup");
         }
         if (userIds == null || userIds.isEmpty()) {
             return Map.of();
@@ -82,6 +134,8 @@ public class IamUserLookupClient implements IamUserLookupPort {
                 IamUserResponse data = extractUserDataOrThrow(response);
                 summaries.put(userId, IamUserSummary.builder()
                         .id(data.getId())
+                        .fullName(data.getFullName())
+                        .email(data.getEmail())
                         .active(Boolean.TRUE.equals(data.getActive()))
                         .roles(data.getRoles() == null ? Set.of() : Set.copyOf(data.getRoles()))
                         .build());
@@ -106,6 +160,15 @@ public class IamUserLookupClient implements IamUserLookupPort {
     private ApiResponse<IamUserResponse> fetchUserById(UUID userId, String accessToken) {
         return restClient.get()
                 .uri("/users/{id}", userId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .retrieve()
+                .body(new ParameterizedTypeReference<>() {
+                });
+    }
+
+    private ApiResponse<IamCommitteeEligibilityResponse> fetchCommitteeEligibility(UUID userId, String accessToken) {
+        return restClient.get()
+                .uri("/users/{id}/can-be-committee", userId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {

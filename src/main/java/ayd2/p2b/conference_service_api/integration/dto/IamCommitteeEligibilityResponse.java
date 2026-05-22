@@ -6,7 +6,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Set;
 import java.util.UUID;
 
 @Data
@@ -14,11 +13,9 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class IamUserResponse {
-    private UUID id;
+public class IamCommitteeEligibilityResponse {
+    private Boolean eligible;
+    private UUID userId;
     private String fullName;
     private String email;
-    private Boolean active;
-    private Set<String> roles;
-    private Set<UUID> linkedInstitutions;
 }

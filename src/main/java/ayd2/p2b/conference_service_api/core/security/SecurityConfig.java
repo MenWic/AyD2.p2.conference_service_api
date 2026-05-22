@@ -35,6 +35,7 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/congresses", "/congresses/*").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/congresses/*/rooms", "/rooms/*").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/congresses/*/activities", "/activities/*").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/congresses/*/calls").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

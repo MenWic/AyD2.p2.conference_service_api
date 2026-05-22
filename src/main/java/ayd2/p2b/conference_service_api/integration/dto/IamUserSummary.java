@@ -14,6 +14,8 @@ import java.util.UUID;
 @AllArgsConstructor
 public class IamUserSummary {
     private UUID id;
+    private String fullName;
+    private String email;
     private boolean active;
     private Set<String> roles;
 }
