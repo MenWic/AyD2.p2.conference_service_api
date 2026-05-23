@@ -174,6 +174,25 @@ class CommitteeControllerTest {
     }
 
     @Test
+    void shouldRejectSystemAdminForCommitteeWriteEndpoints() throws Exception {
+        UUID congressId = UUID.randomUUID();
+        UUID memberId = UUID.randomUUID();
+        String systemAdminToken = tokenWithRoles(List.of("SYSTEM_ADMIN", "PARTICIPANT"));
+
+        mockMvc.perform(post("/congresses/{id}/committee", congressId)
+                        .header("Authorization", "Bearer " + systemAdminToken)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":\"" + memberId + "\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("auth.forbidden"));
+
+        mockMvc.perform(delete("/congresses/{id}/committee/{userId}", congressId, memberId)
+                        .header("Authorization", "Bearer " + systemAdminToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("auth.forbidden"));
+    }
+
+    @Test
     void shouldReturnServiceUnavailableWhenListUseCaseReportsIamUnavailable() throws Exception {
         UUID congressId = UUID.randomUUID();
         String systemAdminToken = tokenWithRoles(List.of("SYSTEM_ADMIN", "PARTICIPANT"));
@@ -259,6 +278,22 @@ class CommitteeControllerTest {
         assertThat(captor.getAllValues().getFirst().getPageSize()).isEqualTo(20);
         assertThat(captor.getAllValues().get(1).getPageNumber()).isEqualTo(3);
         assertThat(captor.getAllValues().get(1).getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    void shouldReturnBadRequestForInvalidUuidPath() throws Exception {
+        String congressAdminToken = tokenWithRoles(List.of("CONGRESS_ADMIN", "PARTICIPANT"));
+        String systemAdminToken = tokenWithRoles(List.of("SYSTEM_ADMIN", "PARTICIPANT"));
+
+        mockMvc.perform(get("/congresses/not-a-uuid/committee")
+                        .header("Authorization", "Bearer " + systemAdminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation.failed"));
+
+        mockMvc.perform(delete("/congresses/{id}/committee/not-a-uuid", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + congressAdminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation.failed"));
     }
 
     private CommitteeMemberResponse sampleResponse(UUID congressId, UUID memberId) {

@@ -1,13 +1,28 @@
 DROP INDEX IF EXISTS uq_open_call_per_congress;
 
 ALTER TABLE calls
+    DROP CONSTRAINT IF EXISTS ck_call_status;
+
+ALTER TABLE calls
     DROP CONSTRAINT IF EXISTS ck_call_closed_at;
+
+ALTER TABLE proposals
+    DROP CONSTRAINT IF EXISTS ck_proposal_status;
+
+ALTER TABLE proposals
+    DROP CONSTRAINT IF EXISTS ck_proposal_type;
 
 ALTER TABLE proposals
     DROP CONSTRAINT IF EXISTS ck_proposal_reviewed;
 
 ALTER TABLE proposals
     DROP CONSTRAINT IF EXISTS ck_proposal_created_activity;
+
+ALTER TABLE calls
+    ALTER COLUMN status DROP DEFAULT;
+
+ALTER TABLE proposals
+    ALTER COLUMN status DROP DEFAULT;
 
 ALTER TABLE calls
     ALTER COLUMN status TYPE VARCHAR(20) USING status::text;
@@ -19,7 +34,7 @@ ALTER TABLE proposals
     ALTER COLUMN type TYPE VARCHAR(20) USING type::text;
 
 ALTER TABLE calls
-    DROP CONSTRAINT IF EXISTS ck_call_status;
+    ALTER COLUMN status SET DEFAULT 'OPEN';
 
 ALTER TABLE calls
     ADD CONSTRAINT ck_call_status
@@ -34,14 +49,11 @@ ALTER TABLE calls
     );
 
 ALTER TABLE proposals
-    DROP CONSTRAINT IF EXISTS ck_proposal_status;
+    ALTER COLUMN status SET DEFAULT 'PENDING';
 
 ALTER TABLE proposals
     ADD CONSTRAINT ck_proposal_status
     CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED'));
-
-ALTER TABLE proposals
-    DROP CONSTRAINT IF EXISTS ck_proposal_type;
 
 ALTER TABLE proposals
     ADD CONSTRAINT ck_proposal_type

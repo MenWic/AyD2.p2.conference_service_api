@@ -190,6 +190,20 @@ class CallControllerTest {
         assertThat(captor.getAllValues().get(1).getPageSize()).isEqualTo(100);
     }
 
+    @Test
+    void shouldReturnBadRequestForInvalidUuidPath() throws Exception {
+        String congressAdminToken = tokenWithRoles(List.of("CONGRESS_ADMIN", "PARTICIPANT"));
+
+        mockMvc.perform(get("/congresses/not-a-uuid/calls"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation.failed"));
+
+        mockMvc.perform(patch("/calls/not-a-uuid/close")
+                        .header("Authorization", "Bearer " + congressAdminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation.failed"));
+    }
+
     private CallResponse sampleResponse(UUID congressId) {
         return CallResponse.builder()
                 .id(UUID.randomUUID())

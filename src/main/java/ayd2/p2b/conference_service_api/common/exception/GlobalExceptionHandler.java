@@ -1,14 +1,17 @@
 package ayd2.p2b.conference_service_api.common.exception;
 
-import jakarta.validation.ConstraintViolationException;
 import ayd2.p2b.conference_service_api.feature.activity.domain.exception.ActivityDomainException;
 import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressDomainException;
+import ayd2.p2b.conference_service_api.feature.proposal.domain.exception.ProposalDomainException;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -44,6 +47,26 @@ public class GlobalExceptionHandler {
         return detail;
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "Validation failed"
+        );
+        detail.setProperty("code", "validation.failed");
+        return detail;
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ProblemDetail handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "Validation failed"
+        );
+        detail.setProperty("code", "validation.failed");
+        return detail;
+    }
+
     @ExceptionHandler(CongressDomainException.class)
     public ProblemDetail handleCongressDomainException(CongressDomainException ex) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(
@@ -56,6 +79,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ActivityDomainException.class)
     public ProblemDetail handleActivityDomainException(ActivityDomainException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                ex.getMessage()
+        );
+        detail.setProperty("code", "domain.invariant_violated");
+        return detail;
+    }
+
+    @ExceptionHandler(ProposalDomainException.class)
+    public ProblemDetail handleProposalDomainException(ProposalDomainException ex) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(
                 HttpStatus.UNPROCESSABLE_ENTITY,
                 ex.getMessage()
