@@ -1,0 +1,43 @@
+services:
+
+  conference-postgres:
+    image: postgres:17
+    container_name: conference-postgres
+    environment:
+      POSTGRES_DB: conference_db
+      POSTGRES_USER: conference_service_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - conference_pgdata:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conference_service_user -d conference_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  conference-service:
+    image: registry.digitalocean.com/ayd2-p2/conference-service:latest
+    container_name: conference-service
+    depends_on:
+      conference-postgres:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: ${SERVER_PORT}
+      SPRING_DATASOURCE_URL: ${DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://${EUREKA_HOST}:8761/eureka/
+      EUREKA_INSTANCE_PREFERIPADDRESS: "true"
+      EUREKA_INSTANCE_IPADDRESS: ${EUREKA_INSTANCE_IPADDRESS}
+      SECURITY_JWT_SECRET: ${SECURITY_JWT_SECRET}
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS}
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+
+volumes:
+  conference_pgdata:
