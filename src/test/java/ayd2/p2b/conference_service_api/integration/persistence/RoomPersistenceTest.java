@@ -20,6 +20,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -93,8 +94,8 @@ class RoomPersistenceTest {
                 room.getId(),
                 "Ponencia 1",
                 "Descripcion",
-                "2026-10-10T10:00:00Z",
-                "2026-10-10T11:00:00Z",
+                OffsetDateTime.parse("2026-10-10T10:00:00Z"),
+                OffsetDateTime.parse("2026-10-10T11:00:00Z"),
                 null,
                 UUID.randomUUID()
         );

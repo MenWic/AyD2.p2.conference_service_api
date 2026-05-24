@@ -76,7 +76,7 @@ class EnrollmentIdempotencyPersistenceTest {
   }
 
   @Test
-  void succeededRequiresEnrollmentIdAndPaymentId() {
+  void succeededAllowsEnrollmentIdAndPaymentId() {
     CongressEntity congress = persistedCongress("URL");
     UUID userId = UUID.randomUUID();
 
@@ -91,7 +91,11 @@ class EnrollmentIdempotencyPersistenceTest {
         enrollment.getId(),
         enrollment.getPaymentId(),
         "110.00"));
+  }
 
+  @Test
+  void shouldRejectSucceededWithoutEnrollmentId() {
+    CongressEntity congress = persistedCongress("URL Missing Enrollment");
     assertThatThrownBy(() -> idempotencyRepository.saveAndFlush(newRecord(
         "key-succeeded-missing-enrollment",
         congress,
@@ -101,7 +105,11 @@ class EnrollmentIdempotencyPersistenceTest {
         UUID.randomUUID(),
         "110.00")))
         .isInstanceOf(DataIntegrityViolationException.class);
+  }
 
+  @Test
+  void shouldRejectSucceededWithoutPaymentId() {
+    CongressEntity congress = persistedCongress("URL Missing Payment");
     assertThatThrownBy(() -> idempotencyRepository.saveAndFlush(newRecord(
         "key-succeeded-missing-payment",
         congress,
@@ -134,7 +142,7 @@ class EnrollmentIdempotencyPersistenceTest {
   }
 
   @Test
-  void invalidStatusAndLongIdempotencyKeyAreRejected() {
+  void shouldRejectLongIdempotencyKey() {
     CongressEntity congress = persistedCongress("Landivar");
 
     assertThatThrownBy(() -> {
@@ -160,7 +168,11 @@ class EnrollmentIdempotencyPersistenceTest {
           .executeUpdate();
       entityManager.flush();
     }).isInstanceOfAny(DataIntegrityViolationException.class, jakarta.persistence.PersistenceException.class);
+  }
 
+  @Test
+  void shouldRejectInvalidIdempotencyStatus() {
+    CongressEntity congress = persistedCongress("Landivar Invalid Status");
     assertThatThrownBy(() -> {
       entityManager.createNativeQuery("""
               insert into enrollment_idempotency_records (

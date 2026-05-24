@@ -75,7 +75,7 @@ class ActivityPersistenceTest {
     }
 
     @Test
-    void shouldRejectWorkshopCapacityByTypeConstraint() {
+    void shouldRejectWorkshopWithoutCapacity() {
         RoomEntity room = persistedRoom("URL");
         ActivityEntity tallerWithoutCapacity = baseActivity(room);
         tallerWithoutCapacity.setType(ActivityType.TALLER);
@@ -83,7 +83,11 @@ class ActivityPersistenceTest {
 
         assertThatThrownBy(() -> activityRepository.saveAndFlush(tallerWithoutCapacity))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
 
+    @Test
+    void shouldRejectNonWorkshopWithCapacity() {
+        RoomEntity room = persistedRoom("URL Dos");
         ActivityEntity ponenciaWithCapacity = baseActivity(room);
         ponenciaWithCapacity.setType(ActivityType.PONENCIA);
         ponenciaWithCapacity.setWorkshopCapacity(10);

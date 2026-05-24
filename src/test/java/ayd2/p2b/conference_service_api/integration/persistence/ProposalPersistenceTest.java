@@ -88,7 +88,7 @@ class ProposalPersistenceTest {
     }
 
     @Test
-    void shouldRejectApprovedOrRejectedWithoutReviewedFields() {
+    void shouldRejectApprovedWithoutReviewedFields() {
         CallEntity call = persistedOpenCall("URL");
         UUID authorUserId = UUID.randomUUID();
 
@@ -97,7 +97,12 @@ class ProposalPersistenceTest {
                 authorUserId,
                 ProposalStatus.APPROVED
         ))).isInstanceOf(DataIntegrityViolationException.class);
+    }
 
+    @Test
+    void shouldRejectRejectedWithoutReviewedFields() {
+        CallEntity call = persistedOpenCall("URL Dos");
+        UUID authorUserId = UUID.randomUUID();
         assertThatThrownBy(() -> proposalRepository.saveAndFlush(newReviewedProposalWithoutReviewData(
                 call.getId(),
                 authorUserId,

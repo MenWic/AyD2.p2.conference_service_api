@@ -36,10 +36,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
-    "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
-        "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
-        "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
-    "security.jwt.secret=test_secret_key_with_at_least_32_chars"
+    "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration," +
+        "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration," +
+        "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration",
+    "security.jwt.secret=test_secret_key_with_at_least_32_chars",
+    "spring.main.lazy-initialization=true"
 })
 @TestPropertySource(properties = "spring.main.allow-bean-definition-overriding=true")
 @AutoConfigureMockMvc
