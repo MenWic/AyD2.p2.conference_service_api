@@ -16,7 +16,17 @@ public final class IntegrationExceptions {
         return new ApiException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "integration.iam_unavailable",
-                detail
-        );
+                detail);
+    }
+
+    public static ApiException walletUnavailable() {
+        return walletUnavailable("Wallet service is currently unavailable");
+    }
+
+    public static ApiException walletUnavailable(String detail) {
+        return new ApiException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "system.integration_error",
+                detail);
     }
 }
