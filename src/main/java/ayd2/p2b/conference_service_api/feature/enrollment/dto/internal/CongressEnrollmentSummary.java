@@ -12,6 +12,7 @@ public class CongressEnrollmentSummary {
 
   UUID congressId;
   UUID institutionId;
+  UUID createdBy;
   String congressName;
   String institutionName;
   BigDecimal price;

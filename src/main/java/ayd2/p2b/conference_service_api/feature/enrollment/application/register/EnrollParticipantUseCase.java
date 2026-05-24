@@ -16,9 +16,11 @@ import ayd2.p2b.conference_service_api.feature.enrollment.dto.response.Enrollmen
 import ayd2.p2b.conference_service_api.feature.enrollment.mapper.EnrollmentMapper;
 import ayd2.p2b.conference_service_api.integration.dto.WalletPaymentRegisterRequest;
 import ayd2.p2b.conference_service_api.integration.port.WalletPaymentPort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -28,7 +30,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Component
-@Transactional
 public class EnrollParticipantUseCase {
 
   private final EnrollmentRepositoryPort enrollmentRepositoryPort;
@@ -36,18 +37,21 @@ public class EnrollParticipantUseCase {
   private final EnrollmentCongressPort enrollmentCongressPort;
   private final WalletPaymentPort walletPaymentPort;
   private final EnrollmentMapper enrollmentMapper;
+  private final EnrollmentRegistrationTransactions enrollmentRegistrationTransactions;
 
   public EnrollParticipantUseCase(
       EnrollmentRepositoryPort enrollmentRepositoryPort,
       EnrollmentIdempotencyRepositoryPort idempotencyRepositoryPort,
       EnrollmentCongressPort enrollmentCongressPort,
       WalletPaymentPort walletPaymentPort,
-      EnrollmentMapper enrollmentMapper) {
+      EnrollmentMapper enrollmentMapper,
+      EnrollmentRegistrationTransactions enrollmentRegistrationTransactions) {
     this.enrollmentRepositoryPort = enrollmentRepositoryPort;
     this.idempotencyRepositoryPort = idempotencyRepositoryPort;
     this.enrollmentCongressPort = enrollmentCongressPort;
     this.walletPaymentPort = walletPaymentPort;
     this.enrollmentMapper = enrollmentMapper;
+    this.enrollmentRegistrationTransactions = enrollmentRegistrationTransactions;
   }
 
   public EnrollParticipantResult execute(
@@ -56,114 +60,238 @@ public class EnrollParticipantUseCase {
       String idempotencyKey,
       EnrollmentRequesterContext requester) {
     EnrollmentAccessPolicy.ensureParticipant(requester);
-
-    String requestHash = computeHash(congressId, requester.getUserId(), request.getPaymentDate());
+    LocalDate paymentDate = requirePaymentDate(request);
 
     Optional<EnrollmentIdempotencyRecord> existingRecord = idempotencyRepositoryPort.findByKey(idempotencyKey);
     if (existingRecord.isPresent()) {
-      return handleExistingRecord(existingRecord.get(), requestHash, requester);
+      return handleExistingRecord(existingRecord.get(), congressId, paymentDate, requester);
     }
 
-    // Pre-check: reject if there's already an active enrollment for this
-    // user/congress
+    CongressEnrollmentSummary congressSummary = enrollmentCongressPort.findPublicEnrollmentCongressById(congressId)
+        .orElseThrow(() -> EnrollmentExceptions.congressNotFound(congressId));
+
+    String congressNameSnapshot = normalizeSnapshotName(congressSummary.getCongressName(), "congressNameSnapshot");
+    String institutionNameSnapshot = normalizeSnapshotName(
+        congressSummary.getInstitutionName(),
+        "institutionNameSnapshot");
+    BigDecimal amount = normalizeAmount(congressSummary.getPrice());
+
+    String requestHash = computeWalletPayloadHash(
+        congressSummary.getCongressId(),
+        requester.getUserId(),
+        congressSummary.getInstitutionId(),
+        amount,
+        paymentDate,
+        congressNameSnapshot,
+        institutionNameSnapshot);
+
     idempotencyRepositoryPort.findActiveByCongressIdAndUserId(congressId, requester.getUserId())
         .ifPresent(active -> {
           throw EnrollmentExceptions.alreadyEnrolled(congressId, requester.getUserId());
         });
 
-    // Insert PROCESSING record — DB constraint is the final race condition guard
     EnrollmentIdempotencyRecord processingRecord = EnrollmentIdempotencyRecord.builder()
         .idempotencyKey(idempotencyKey)
         .congressId(congressId)
         .userId(requester.getUserId())
-        .paymentDate(request.getPaymentDate())
+        .paymentDate(paymentDate)
         .requestHash(requestHash)
         .status(EnrollmentIdempotencyStatus.PROCESSING)
+        .institutionId(congressSummary.getInstitutionId())
+        .congressNameSnapshot(congressNameSnapshot)
+        .institutionNameSnapshot(institutionNameSnapshot)
+        .amount(amount)
         .createdAt(Instant.now())
         .updatedAt(Instant.now())
         .build();
-    EnrollmentIdempotencyRecord savedProcessing = idempotencyRepositoryPort.insert(processingRecord);
 
-    CongressEnrollmentSummary congressSummary = enrollmentCongressPort.findCongressSummaryById(congressId)
-        .orElseThrow(() -> {
-          markFailed(savedProcessing);
-          return EnrollmentExceptions.congressNotFound(congressId);
-        });
-
-    UUID paymentId;
+    EnrollmentIdempotencyRecord savedProcessing;
     try {
-      WalletPaymentRegisterRequest walletRequest = WalletPaymentRegisterRequest.builder()
-          .userId(requester.getUserId())
-          .congressId(congressSummary.getCongressId())
-          .institutionId(congressSummary.getInstitutionId())
-          .congressNameSnapshot(congressSummary.getCongressName())
-          .institutionNameSnapshot(congressSummary.getInstitutionName())
-          .amount(congressSummary.getPrice())
-          .paymentDate(request.getPaymentDate())
-          .build();
-      paymentId = walletPaymentPort.registerPayment(walletRequest, idempotencyKey, requester.getAccessToken());
-    } catch (ApiException ex) {
-      markFailed(savedProcessing);
-      throw ex;
+      savedProcessing = enrollmentRegistrationTransactions.createProcessingRecord(processingRecord);
+    } catch (ApiException conflict) {
+      if (conflict.getStatus().isSameCodeAs(HttpStatus.CONFLICT)) {
+        return recoverAfterConcurrentProcessingInsert(congressId, paymentDate, idempotencyKey, requester);
+      }
+      throw conflict;
     }
 
-    Enrollment enrollment = Enrollment.builder()
-        .congressId(congressId)
-        .userId(requester.getUserId())
-        .paymentId(paymentId)
-        .enrolledAt(Instant.now())
-        .paymentDate(request.getPaymentDate())
-        .createdBy(requester.getUserId())
-        .build();
-    enrollment.validateInvariants();
-
-    Enrollment saved = enrollmentRepositoryPort.save(enrollment);
-
-    idempotencyRepositoryPort.update(savedProcessing.toBuilder()
-        .status(EnrollmentIdempotencyStatus.SUCCEEDED)
-        .enrollmentId(saved.getId())
-        .paymentId(paymentId)
-        .updatedAt(Instant.now())
-        .build());
-
-    EnrollmentResponse response = enrollmentMapper.toResponse(saved);
-    return EnrollParticipantResult.builder()
-        .enrollment(response)
-        .replay(false)
-        .build();
+    return recoverProcessingWithoutPayment(savedProcessing, requester, false);
   }
 
   private EnrollParticipantResult handleExistingRecord(
-      EnrollmentIdempotencyRecord record, String requestHash, EnrollmentRequesterContext requester) {
+      EnrollmentIdempotencyRecord record,
+      UUID requestedCongressId,
+      LocalDate requestedPaymentDate,
+      EnrollmentRequesterContext requester) {
+
+    ensureIdentityMatches(record, requestedCongressId, requester.getUserId(), requestedPaymentDate);
 
     return switch (record.getStatus()) {
       case FAILED -> throw EnrollmentExceptions.failedKeyNotReusable(record.getIdempotencyKey());
-      case PROCESSING -> throw EnrollmentExceptions.alreadyEnrolled(record.getCongressId(), record.getUserId());
+      case PROCESSING -> {
+        if (record.getPaymentId() != null) {
+          Enrollment enrollment = enrollmentRegistrationTransactions.completeSuccessfulEnrollment(
+              record,
+              buildEnrollmentDraft(record, record.getPaymentId()),
+              record.getPaymentId());
+          yield EnrollParticipantResult.builder()
+              .enrollment(enrollmentMapper.toResponse(enrollment))
+              .replay(true)
+              .build();
+        }
+        yield recoverProcessingWithoutPayment(record, requester, true);
+      }
       case SUCCEEDED -> {
-        if (!record.getRequestHash().equals(requestHash)) {
+        Enrollment existing = enrollmentRepositoryPort.findByCongressIdAndUserId(record.getCongressId(), record.getUserId())
+            .orElseGet(() -> {
+              if (record.getPaymentId() == null) {
+                throw EnrollmentExceptions.idempotencyConflict(record.getIdempotencyKey());
+              }
+              return enrollmentRegistrationTransactions.completeSuccessfulEnrollment(
+                  record,
+                  buildEnrollmentDraft(record, record.getPaymentId()),
+                  record.getPaymentId());
+            });
+        if (!existing.getPaymentId().equals(record.getPaymentId())) {
           throw EnrollmentExceptions.idempotencyConflict(record.getIdempotencyKey());
         }
-        Enrollment existing = enrollmentRepositoryPort
-            .findByCongressIdAndUserId(record.getCongressId(), record.getUserId())
-            .orElseThrow(() -> EnrollmentExceptions.notFound(record.getEnrollmentId()));
-        EnrollmentResponse response = enrollmentMapper.toResponse(existing);
         yield EnrollParticipantResult.builder()
-            .enrollment(response)
+            .enrollment(enrollmentMapper.toResponse(existing))
             .replay(true)
             .build();
       }
     };
   }
 
-  private void markFailed(EnrollmentIdempotencyRecord record) {
-    idempotencyRepositoryPort.update(record.toBuilder()
-        .status(EnrollmentIdempotencyStatus.FAILED)
-        .updatedAt(Instant.now())
-        .build());
+  private EnrollParticipantResult recoverProcessingWithoutPayment(
+      EnrollmentIdempotencyRecord record,
+      EnrollmentRequesterContext requester,
+      boolean replay) {
+
+    WalletPaymentRegisterRequest walletRequest = walletRequestFromRecord(record);
+    UUID paymentId;
+    try {
+      paymentId = walletPaymentPort.registerPayment(walletRequest, record.getIdempotencyKey(), requester.getAccessToken());
+    } catch (ApiException ex) {
+      if (isDeterministicFailure(ex)) {
+        enrollmentRegistrationTransactions.markFailed(record);
+      }
+      throw ex;
+    }
+
+    EnrollmentIdempotencyRecord updatedRecord = enrollmentRegistrationTransactions.recordWalletPayment(record, paymentId);
+    Enrollment enrollment = enrollmentRegistrationTransactions.completeSuccessfulEnrollment(
+        updatedRecord,
+        buildEnrollmentDraft(updatedRecord, paymentId),
+        paymentId);
+
+    return EnrollParticipantResult.builder()
+        .enrollment(enrollmentMapper.toResponse(enrollment))
+        .replay(replay)
+        .build();
   }
 
-  private static String computeHash(UUID congressId, UUID userId, LocalDate paymentDate) {
-    String raw = congressId.toString() + "|" + userId.toString() + "|" + paymentDate.toString();
+  private EnrollParticipantResult recoverAfterConcurrentProcessingInsert(
+      UUID congressId,
+      LocalDate paymentDate,
+      String idempotencyKey,
+      EnrollmentRequesterContext requester) {
+    Optional<EnrollmentIdempotencyRecord> recordByKey = idempotencyRepositoryPort.findByKey(idempotencyKey);
+    if (recordByKey.isPresent()) {
+      return handleExistingRecord(recordByKey.get(), congressId, paymentDate, requester);
+    }
+
+    Optional<EnrollmentIdempotencyRecord> activeRecord = idempotencyRepositoryPort
+        .findActiveByCongressIdAndUserId(congressId, requester.getUserId());
+    if (activeRecord.isPresent()) {
+      throw EnrollmentExceptions.alreadyEnrolled(congressId, requester.getUserId());
+    }
+
+    throw EnrollmentExceptions.idempotencyConflict(idempotencyKey);
+  }
+
+  private void ensureIdentityMatches(
+      EnrollmentIdempotencyRecord record,
+      UUID requestedCongressId,
+      UUID requesterUserId,
+      LocalDate requestedPaymentDate) {
+    if (!record.getCongressId().equals(requestedCongressId)
+        || !record.getUserId().equals(requesterUserId)
+        || !record.getPaymentDate().equals(requestedPaymentDate)) {
+      throw EnrollmentExceptions.idempotencyConflict(record.getIdempotencyKey());
+    }
+  }
+
+  private LocalDate requirePaymentDate(CreateEnrollmentRequest request) {
+    if (request == null || request.getPaymentDate() == null) {
+      throw EnrollmentExceptions.validationFailed("paymentDate is required");
+    }
+    return request.getPaymentDate();
+  }
+
+  private BigDecimal normalizeAmount(BigDecimal amount) {
+    if (amount == null) {
+      throw EnrollmentExceptions.validationFailed("Congress price is required for enrollment");
+    }
+    try {
+      return amount.setScale(2, RoundingMode.UNNECESSARY);
+    } catch (ArithmeticException ex) {
+      throw EnrollmentExceptions.validationFailed("Congress price must use monetary scale 2");
+    }
+  }
+
+  private String normalizeSnapshotName(String value, String field) {
+    if (value == null) {
+      throw EnrollmentExceptions.validationFailed(field + " is required");
+    }
+    String normalized = value.trim();
+    if (normalized.isEmpty()) {
+      throw EnrollmentExceptions.validationFailed(field + " is required");
+    }
+    return normalized;
+  }
+
+  private WalletPaymentRegisterRequest walletRequestFromRecord(EnrollmentIdempotencyRecord record) {
+    return WalletPaymentRegisterRequest.builder()
+        .userId(record.getUserId())
+        .congressId(record.getCongressId())
+        .institutionId(record.getInstitutionId())
+        .congressNameSnapshot(record.getCongressNameSnapshot())
+        .institutionNameSnapshot(record.getInstitutionNameSnapshot())
+        .amount(record.getAmount())
+        .paymentDate(record.getPaymentDate())
+        .build();
+  }
+
+  private Enrollment buildEnrollmentDraft(EnrollmentIdempotencyRecord record, UUID paymentId) {
+    Enrollment draft = Enrollment.builder()
+        .congressId(record.getCongressId())
+        .userId(record.getUserId())
+        .paymentId(paymentId)
+        .paymentDate(record.getPaymentDate())
+        .enrolledAt(Instant.now())
+        .createdBy(record.getUserId())
+        .build();
+    draft.validateInvariants();
+    return draft;
+  }
+
+  private boolean isDeterministicFailure(ApiException ex) {
+    return ex.getStatus().isSameCodeAs(HttpStatus.UNPROCESSABLE_ENTITY)
+        && "wallet.insufficient_funds".equals(ex.getCode());
+  }
+
+  private static String computeWalletPayloadHash(
+      UUID congressId,
+      UUID userId,
+      UUID institutionId,
+      BigDecimal amount,
+      LocalDate paymentDate,
+      String congressNameSnapshot,
+      String institutionNameSnapshot) {
+    String raw = congressId + "|" + userId + "|" + institutionId + "|"
+        + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString() + "|"
+        + paymentDate + "|" + congressNameSnapshot.trim() + "|" + institutionNameSnapshot.trim();
     try {
       MessageDigest md = MessageDigest.getInstance("SHA-256");
       byte[] digest = md.digest(raw.getBytes(StandardCharsets.UTF_8));

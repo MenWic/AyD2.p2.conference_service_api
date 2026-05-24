@@ -79,13 +79,17 @@ class CallPersistenceTest {
     }
 
     @Test
-    void shouldEnforceClosedAtCheckConstraint() {
+    void shouldRejectOpenCallWithClosedAt() {
         CongressEntity congress = persistedCongress("Del Valle");
 
         assertThatThrownBy(() -> callRepository.saveAndFlush(
                 newCall(congress.getId(), CallStatus.OPEN, OffsetDateTime.parse("2026-10-10T16:00:00Z"))
         )).isInstanceOf(DataIntegrityViolationException.class);
+    }
 
+    @Test
+    void shouldRejectClosedCallWithoutClosedAt() {
+        CongressEntity congress = persistedCongress("Del Valle Dos");
         assertThatThrownBy(() -> callRepository.saveAndFlush(
                 newCall(congress.getId(), CallStatus.CLOSED, null)
         )).isInstanceOf(DataIntegrityViolationException.class);

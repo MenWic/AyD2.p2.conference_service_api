@@ -31,6 +31,10 @@ public interface EnrollmentMapper {
         .status(EnrollmentIdempotencyStatus.valueOf(entity.getStatus()))
         .enrollmentId(entity.getEnrollmentId())
         .paymentId(entity.getPaymentId())
+        .institutionId(entity.getInstitutionId())
+        .congressNameSnapshot(entity.getCongressNameSnapshot())
+        .institutionNameSnapshot(entity.getInstitutionNameSnapshot())
+        .amount(entity.getAmount())
         .createdAt(entity.getCreatedAt())
         .updatedAt(entity.getUpdatedAt())
         .build();
@@ -49,6 +53,10 @@ public interface EnrollmentMapper {
     entity.setStatus(record.getStatus().name());
     entity.setEnrollmentId(record.getEnrollmentId());
     entity.setPaymentId(record.getPaymentId());
+    entity.setInstitutionId(record.getInstitutionId());
+    entity.setCongressNameSnapshot(record.getCongressNameSnapshot());
+    entity.setInstitutionNameSnapshot(record.getInstitutionNameSnapshot());
+    entity.setAmount(record.getAmount());
     entity.setCreatedAt(record.getCreatedAt());
     entity.setUpdatedAt(record.getUpdatedAt());
     return entity;

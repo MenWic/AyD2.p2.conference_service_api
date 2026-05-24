@@ -3,6 +3,7 @@ package ayd2.p2b.conference_service_api.feature.enrollment.domain.model;
 import lombok.Builder;
 import lombok.Value;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -19,6 +20,10 @@ public class EnrollmentIdempotencyRecord {
   EnrollmentIdempotencyStatus status;
   UUID enrollmentId;
   UUID paymentId;
+  UUID institutionId;
+  String congressNameSnapshot;
+  String institutionNameSnapshot;
+  BigDecimal amount;
   Instant createdAt;
   Instant updatedAt;
 }

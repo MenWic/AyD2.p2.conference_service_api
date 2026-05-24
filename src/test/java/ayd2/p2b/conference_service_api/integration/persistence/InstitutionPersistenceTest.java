@@ -15,6 +15,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.util.UUID;
 
@@ -94,7 +95,7 @@ class InstitutionPersistenceTest {
                 Date.valueOf("2026-06-10"),
                 Date.valueOf("2026-06-12"),
                 "Guatemala",
-                "35.00",
+                new BigDecimal("35.00"),
                 UUID.randomUUID()
         );
 

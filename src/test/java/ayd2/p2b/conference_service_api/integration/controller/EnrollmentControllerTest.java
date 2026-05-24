@@ -36,10 +36,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
-    "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
-        "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
-        "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
-    "security.jwt.secret=test_secret_key_with_at_least_32_chars"
+    "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration," +
+        "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration," +
+        "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration",
+    "security.jwt.secret=test_secret_key_with_at_least_32_chars",
+    "spring.main.lazy-initialization=true"
 })
 @TestPropertySource(properties = "spring.main.allow-bean-definition-overriding=true")
 @AutoConfigureMockMvc
@@ -84,6 +85,20 @@ class EnrollmentControllerTest {
         .header("Idempotency-Key", "   ")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"paymentDate\":\"2026-06-15\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("validation.failed"));
+  }
+
+  @Test
+  void enroll_too_long_idempotency_key_returns_400() throws Exception {
+    String token = buildToken(USER_ID, "PARTICIPANT");
+    String longKey = "k".repeat(121);
+
+    mockMvc.perform(post("/congresses/{id}/enrollments", CONGRESS_ID)
+            .header("Authorization", "Bearer " + token)
+            .header("Idempotency-Key", longKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"paymentDate\":\"2026-06-15\"}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("validation.failed"));
   }
@@ -135,6 +150,7 @@ class EnrollmentControllerTest {
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"paymentDate\":\"2026-06-15\"}"))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.message").value("idempotency.replay"))
         .andExpect(jsonPath("$.data.id").value(ENROLLMENT_ID.toString()));
   }
 
