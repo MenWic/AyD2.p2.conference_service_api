@@ -1,0 +1,69 @@
+name: Publish to DigitalOcean Container Registry and Deploy to Droplet - Build, Push, and Deploy Docker Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+
+    env:
+      REGISTRY: registry.digitalocean.com/ayd2-p2
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+      # ── Checkout ─────────────────────────────────────
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Install DigitalOcean CLI ───────────────────
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      # ── Login to DigitalOcean Registry ─────────────
+
+      - name: Login to DigitalOcean Container Registry
+        run: doctl registry login --expiry-seconds 1200
+
+      # ── Build Docker Image ─────────────────────────
+
+      - name: Build Docker image — conference-service
+        run: |
+          SHORT_SHA=$(echo $IMAGE_TAG | head -c7)
+
+          docker build \
+            -t $REGISTRY/conference-service:$SHORT_SHA \
+            -t $REGISTRY/conference-service:latest \
+            .
+
+      # ── Push Image ─────────────────────────────────
+
+      - name: Push Docker image — conference-service
+        run: |
+          SHORT_SHA=$(echo $IMAGE_TAG | head -c7)
+
+          docker push $REGISTRY/conference-service:$SHORT_SHA
+          docker push $REGISTRY/conference-service:latest
+
+       # ── Deploy al Droplet via SSH ──────────────────
+
+      - name: Deploy al Droplet via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            cd /opt/conference-service
+            echo ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} | \
+              docker login registry.digitalocean.com --username ignored --password-stdin
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
