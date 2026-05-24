@@ -2,12 +2,12 @@ package ayd2.p2b.conference_service_api.unit.feature.enrollment;
 
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.core.security.Role;
-import ayd2.p2b.conference_service_api.feature.enrollment.application.exception.EnrollmentExceptions;
 import ayd2.p2b.conference_service_api.feature.enrollment.application.port.EnrollmentCongressPort;
 import ayd2.p2b.conference_service_api.feature.enrollment.application.port.EnrollmentIdempotencyRepositoryPort;
 import ayd2.p2b.conference_service_api.feature.enrollment.application.port.EnrollmentRepositoryPort;
 import ayd2.p2b.conference_service_api.feature.enrollment.application.register.EnrollParticipantResult;
 import ayd2.p2b.conference_service_api.feature.enrollment.application.register.EnrollParticipantUseCase;
+import ayd2.p2b.conference_service_api.feature.enrollment.application.register.EnrollmentRegistrationTransactions;
 import ayd2.p2b.conference_service_api.feature.enrollment.domain.model.Enrollment;
 import ayd2.p2b.conference_service_api.feature.enrollment.domain.model.EnrollmentIdempotencyRecord;
 import ayd2.p2b.conference_service_api.feature.enrollment.domain.model.EnrollmentIdempotencyStatus;
@@ -27,6 +27,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -39,6 +42,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,16 +58,19 @@ class EnrollParticipantUseCaseTest {
   private WalletPaymentPort walletPaymentPort;
   @Mock
   private EnrollmentMapper enrollmentMapper;
+  @Mock
+  private EnrollmentRegistrationTransactions enrollmentRegistrationTransactions;
 
   private EnrollParticipantUseCase useCase;
 
   private static final UUID CONGRESS_ID = UUID.randomUUID();
   private static final UUID USER_ID = UUID.randomUUID();
+  private static final UUID INSTITUTION_ID = UUID.randomUUID();
   private static final UUID PAYMENT_ID = UUID.randomUUID();
   private static final UUID ENROLLMENT_ID = UUID.randomUUID();
-  private static final String IDEMPOTENCY_KEY = "test-idempotency-key-123";
+  private static final String IDEMPOTENCY_KEY = "idem-key-123";
   private static final LocalDate PAYMENT_DATE = LocalDate.of(2026, 6, 15);
-  private static final BigDecimal PRICE = new BigDecimal("150.00");
+  private static final BigDecimal AMOUNT = new BigDecimal("150.00");
 
   @BeforeEach
   void setUp() {
@@ -72,15 +79,17 @@ class EnrollParticipantUseCaseTest {
         idempotencyRepositoryPort,
         enrollmentCongressPort,
         walletPaymentPort,
-        enrollmentMapper);
+        enrollmentMapper,
+        enrollmentRegistrationTransactions);
   }
 
   @Test
-  void non_participant_role_returns_403() {
-    EnrollmentRequesterContext requester = requester(Set.of(Role.CONGRESS_ADMIN));
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-
-    assertThatThrownBy(() -> useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester))
+  void nonParticipantReturns403() {
+    assertThatThrownBy(() -> useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        requester(Set.of(Role.CONGRESS_ADMIN))))
         .isInstanceOf(ApiException.class)
         .satisfies(ex -> {
           ApiException apiEx = (ApiException) ex;
@@ -90,251 +99,259 @@ class EnrollParticipantUseCaseTest {
   }
 
   @Test
-  void congress_not_found_returns_404() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
+  void newEnrollmentCreatesProcessingSnapshotAndUsesWalletPayloadForHash() {
+    EnrollmentIdempotencyRecord processing = processingRecord(IDEMPOTENCY_KEY, null);
+    EnrollmentIdempotencyRecord processingWithPayment = processing.toBuilder().paymentId(PAYMENT_ID).build();
+    Enrollment enrolled = enrollment();
+    EnrollmentResponse response = enrollmentResponse();
 
     when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID))
-        .thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.insert(any())).thenReturn(processingRecord());
-    when(enrollmentCongressPort.findCongressSummaryById(CONGRESS_ID)).thenReturn(Optional.empty());
+    when(enrollmentCongressPort.findPublicEnrollmentCongressById(CONGRESS_ID)).thenReturn(Optional.of(summary()));
+    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID)).thenReturn(Optional.empty());
+    when(enrollmentRegistrationTransactions.createProcessingRecord(any())).thenReturn(processing);
+    when(walletPaymentPort.registerPayment(any(), eq(IDEMPOTENCY_KEY), eq("token"))).thenReturn(PAYMENT_ID);
+    when(enrollmentRegistrationTransactions.recordWalletPayment(processing, PAYMENT_ID)).thenReturn(processingWithPayment);
+    when(enrollmentRegistrationTransactions.completeSuccessfulEnrollment(any(), any(), eq(PAYMENT_ID)))
+        .thenReturn(enrolled);
+    when(enrollmentMapper.toResponse(enrolled)).thenReturn(response);
 
-    assertThatThrownBy(() -> useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester))
-        .isInstanceOf(ApiException.class)
-        .satisfies(ex -> {
-          ApiException apiEx = (ApiException) ex;
-          assertThat(apiEx.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
-          assertThat(apiEx.getCode()).isEqualTo("resource.not_found");
-        });
-  }
-
-  @Test
-  void wallet_insufficient_funds_marks_idempotency_failed_and_returns_422() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-
-    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID))
-        .thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.insert(any())).thenReturn(processingRecord());
-    when(enrollmentCongressPort.findCongressSummaryById(CONGRESS_ID)).thenReturn(Optional.of(congressSummary()));
-    when(walletPaymentPort.registerPayment(any(), eq(IDEMPOTENCY_KEY), any()))
-        .thenThrow(new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "wallet.insufficient_funds",
-            "Insufficient funds"));
-
-    assertThatThrownBy(() -> useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester))
-        .isInstanceOf(ApiException.class)
-        .satisfies(ex -> {
-          ApiException apiEx = (ApiException) ex;
-          assertThat(apiEx.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
-          assertThat(apiEx.getCode()).isEqualTo("wallet.insufficient_funds");
-        });
-
-    verify(idempotencyRepositoryPort).update(
-        argThatStatus(EnrollmentIdempotencyStatus.FAILED));
-  }
-
-  @Test
-  void wallet_integration_error_marks_idempotency_failed_and_returns_503() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-
-    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID))
-        .thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.insert(any())).thenReturn(processingRecord());
-    when(enrollmentCongressPort.findCongressSummaryById(CONGRESS_ID)).thenReturn(Optional.of(congressSummary()));
-    when(walletPaymentPort.registerPayment(any(), eq(IDEMPOTENCY_KEY), any()))
-        .thenThrow(new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "system.integration_error",
-            "Wallet unavailable"));
-
-    assertThatThrownBy(() -> useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester))
-        .isInstanceOf(ApiException.class)
-        .satisfies(ex -> {
-          ApiException apiEx = (ApiException) ex;
-          assertThat(apiEx.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-        });
-
-    verify(idempotencyRepositoryPort).update(
-        argThatStatus(EnrollmentIdempotencyStatus.FAILED));
-  }
-
-  @Test
-  void successful_enrollment_persists_enrollment_with_correct_payment_id() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-    Enrollment savedEnrollment = savedEnrollment();
-    EnrollmentResponse expectedResponse = enrollmentResponse();
-
-    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID))
-        .thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.insert(any())).thenReturn(processingRecord());
-    when(enrollmentCongressPort.findCongressSummaryById(CONGRESS_ID)).thenReturn(Optional.of(congressSummary()));
-    when(walletPaymentPort.registerPayment(any(), eq(IDEMPOTENCY_KEY), any())).thenReturn(PAYMENT_ID);
-    when(enrollmentRepositoryPort.save(any())).thenReturn(savedEnrollment);
-    when(enrollmentMapper.toResponse(savedEnrollment)).thenReturn(expectedResponse);
-    when(idempotencyRepositoryPort.update(any())).thenReturn(succeededRecord());
-
-    EnrollParticipantResult result = useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester);
+    EnrollParticipantResult result = useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester());
 
     assertThat(result.isReplay()).isFalse();
-    assertThat(result.getEnrollment()).isEqualTo(expectedResponse);
+    assertThat(result.getEnrollment()).isEqualTo(response);
 
-    ArgumentCaptor<Enrollment> enrollmentCaptor = ArgumentCaptor.forClass(Enrollment.class);
-    verify(enrollmentRepositoryPort).save(enrollmentCaptor.capture());
-    assertThat(enrollmentCaptor.getValue().getPaymentId()).isEqualTo(PAYMENT_ID);
-    assertThat(enrollmentCaptor.getValue().getCreatedBy()).isEqualTo(USER_ID);
+    ArgumentCaptor<EnrollmentIdempotencyRecord> recordCaptor = ArgumentCaptor.forClass(EnrollmentIdempotencyRecord.class);
+    verify(enrollmentRegistrationTransactions).createProcessingRecord(recordCaptor.capture());
+    EnrollmentIdempotencyRecord created = recordCaptor.getValue();
+    assertThat(created.getInstitutionId()).isEqualTo(INSTITUTION_ID);
+    assertThat(created.getCongressNameSnapshot()).isEqualTo("Congress Name");
+    assertThat(created.getInstitutionNameSnapshot()).isEqualTo("Institution Name");
+    assertThat(created.getAmount()).isEqualByComparingTo(AMOUNT);
+    assertThat(created.getRequestHash()).isEqualTo(expectedHashFromSnapshot(created));
+
+    ArgumentCaptor<WalletPaymentRegisterRequest> walletCaptor = ArgumentCaptor.forClass(WalletPaymentRegisterRequest.class);
+    verify(walletPaymentPort).registerPayment(walletCaptor.capture(), eq(IDEMPOTENCY_KEY), eq("token"));
+    WalletPaymentRegisterRequest walletRequest = walletCaptor.getValue();
+    assertThat(walletRequest.getCongressId()).isEqualTo(CONGRESS_ID);
+    assertThat(walletRequest.getUserId()).isEqualTo(USER_ID);
+    assertThat(walletRequest.getInstitutionId()).isEqualTo(INSTITUTION_ID);
+    assertThat(walletRequest.getAmount()).isEqualByComparingTo(AMOUNT);
+    assertThat(walletRequest.getCongressNameSnapshot()).isEqualTo("Congress Name");
+    assertThat(walletRequest.getInstitutionNameSnapshot()).isEqualTo("Institution Name");
   }
 
   @Test
-  void amount_sent_to_wallet_equals_congress_price_not_request_body() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-    Enrollment savedEnrollment = savedEnrollment();
+  void succeededReplayReturnsWithoutWalletCall() {
+    EnrollmentIdempotencyRecord succeeded = succeededRecord(IDEMPOTENCY_KEY, PAYMENT_ID);
+    Enrollment existing = enrollment();
+    EnrollmentResponse response = enrollmentResponse();
+    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.of(succeeded));
+    when(enrollmentRepositoryPort.findByCongressIdAndUserId(CONGRESS_ID, USER_ID)).thenReturn(Optional.of(existing));
+    when(enrollmentMapper.toResponse(existing)).thenReturn(response);
 
-    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID))
-        .thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.insert(any())).thenReturn(processingRecord());
-    when(enrollmentCongressPort.findCongressSummaryById(CONGRESS_ID)).thenReturn(Optional.of(congressSummary()));
-    when(walletPaymentPort.registerPayment(any(), any(), any())).thenReturn(PAYMENT_ID);
-    when(enrollmentRepositoryPort.save(any())).thenReturn(savedEnrollment);
-    when(enrollmentMapper.toResponse(savedEnrollment)).thenReturn(enrollmentResponse());
-    when(idempotencyRepositoryPort.update(any())).thenReturn(succeededRecord());
-
-    useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester);
-
-    ArgumentCaptor<WalletPaymentRegisterRequest> walletCaptor = ArgumentCaptor
-        .forClass(WalletPaymentRegisterRequest.class);
-    verify(walletPaymentPort).registerPayment(walletCaptor.capture(), any(), any());
-    assertThat(walletCaptor.getValue().getAmount()).isEqualByComparingTo(PRICE);
-  }
-
-  @Test
-  void same_key_same_request_after_success_returns_existing_enrollment_200() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-    EnrollmentIdempotencyRecord succeededRecord = succeededRecord();
-    Enrollment existingEnrollment = savedEnrollment();
-    EnrollmentResponse existingResponse = enrollmentResponse();
-
-    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.of(succeededRecord));
-    when(enrollmentRepositoryPort.findByCongressIdAndUserId(CONGRESS_ID, USER_ID))
-        .thenReturn(Optional.of(existingEnrollment));
-    when(enrollmentMapper.toResponse(existingEnrollment)).thenReturn(existingResponse);
-
-    EnrollParticipantResult result = useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester);
+    EnrollParticipantResult result = useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester());
 
     assertThat(result.isReplay()).isTrue();
-    assertThat(result.getEnrollment()).isEqualTo(existingResponse);
-    verify(walletPaymentPort, never()).registerPayment(any(), any(), any());
+    assertThat(result.getEnrollment()).isEqualTo(response);
+    verifyNoInteractions(walletPaymentPort);
   }
 
   @Test
-  void same_key_different_request_returns_409() {
-    EnrollmentRequesterContext requester = participantRequester();
-    // Different payment date — hash won't match
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(LocalDate.of(2026, 12, 31));
+  void failedRecordSameRequestReturns422AndNoWalletCall() {
+    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.of(failedRecord(IDEMPOTENCY_KEY)));
 
-    // Succeeded record was created with PAYMENT_DATE (different hash)
-    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.of(succeededRecord()));
-
-    assertThatThrownBy(() -> useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester))
-        .isInstanceOf(ApiException.class)
-        .satisfies(ex -> {
-          ApiException apiEx = (ApiException) ex;
-          assertThat(apiEx.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-          assertThat(apiEx.getCode()).isEqualTo("resource.conflict");
-        });
-
-    verify(walletPaymentPort, never()).registerPayment(any(), any(), any());
-  }
-
-  @Test
-  void different_key_for_already_enrolled_user_returns_409_before_wallet_call() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-    String differentKey = "different-key-456";
-
-    when(idempotencyRepositoryPort.findByKey(differentKey)).thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID))
-        .thenReturn(Optional.of(succeededRecord()));
-
-    assertThatThrownBy(() -> useCase.execute(CONGRESS_ID, request, differentKey, requester))
-        .isInstanceOf(ApiException.class)
-        .satisfies(ex -> {
-          ApiException apiEx = (ApiException) ex;
-          assertThat(apiEx.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-          assertThat(apiEx.getCode()).isEqualTo("resource.conflict");
-        });
-
-    verify(walletPaymentPort, never()).registerPayment(any(), any(), any());
-  }
-
-  @Test
-  void failed_idempotency_record_with_same_key_returns_422() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-    EnrollmentIdempotencyRecord failedRecord = failedRecord();
-
-    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.of(failedRecord));
-
-    assertThatThrownBy(() -> useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester))
+    assertThatThrownBy(() -> useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester()))
         .isInstanceOf(ApiException.class)
         .satisfies(ex -> {
           ApiException apiEx = (ApiException) ex;
           assertThat(apiEx.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
           assertThat(apiEx.getCode()).isEqualTo("idempotency.failed_key_not_reusable");
         });
+
+    verifyNoInteractions(walletPaymentPort);
   }
 
   @Test
-  void created_by_is_set_to_requester_user_id() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-    Enrollment savedEnrollment = savedEnrollment();
+  void sameKeyDifferentCongressOrUserOrPaymentDateReturns409() {
+    EnrollmentIdempotencyRecord record = processingRecord(IDEMPOTENCY_KEY, null);
+    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.of(record));
 
-    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID))
-        .thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.insert(any())).thenReturn(processingRecord());
-    when(enrollmentCongressPort.findCongressSummaryById(CONGRESS_ID)).thenReturn(Optional.of(congressSummary()));
-    when(walletPaymentPort.registerPayment(any(), any(), any())).thenReturn(PAYMENT_ID);
-    when(enrollmentRepositoryPort.save(any())).thenReturn(savedEnrollment);
-    when(enrollmentMapper.toResponse(savedEnrollment)).thenReturn(enrollmentResponse());
-    when(idempotencyRepositoryPort.update(any())).thenReturn(succeededRecord());
+    assertThatThrownBy(() -> useCase.execute(
+        UUID.randomUUID(),
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester()))
+        .isInstanceOf(ApiException.class)
+        .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
 
-    useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester);
+    EnrollmentRequesterContext otherUser = EnrollmentRequesterContext.builder()
+        .userId(UUID.randomUUID())
+        .roles(Set.of(Role.PARTICIPANT))
+        .accessToken("token")
+        .build();
+    assertThatThrownBy(() -> useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        otherUser))
+        .isInstanceOf(ApiException.class)
+        .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
 
-    ArgumentCaptor<Enrollment> captor = ArgumentCaptor.forClass(Enrollment.class);
-    verify(enrollmentRepositoryPort).save(captor.capture());
-    assertThat(captor.getValue().getCreatedBy()).isEqualTo(USER_ID);
+    assertThatThrownBy(() -> useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(LocalDate.of(2027, 1, 1)),
+        IDEMPOTENCY_KEY,
+        participantRequester()))
+        .isInstanceOf(ApiException.class)
+        .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
   }
 
   @Test
-  void successful_enrollment_marks_idempotency_succeeded() {
-    EnrollmentRequesterContext requester = participantRequester();
-    CreateEnrollmentRequest request = new CreateEnrollmentRequest(PAYMENT_DATE);
-    Enrollment savedEnrollment = savedEnrollment();
+  void processingWithPaymentRecoversLocallyWithoutWalletCall() {
+    EnrollmentIdempotencyRecord record = processingRecord(IDEMPOTENCY_KEY, PAYMENT_ID);
+    Enrollment enrolled = enrollment();
+    EnrollmentResponse response = enrollmentResponse();
+    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.of(record));
+    when(enrollmentRegistrationTransactions.completeSuccessfulEnrollment(any(), any(), eq(PAYMENT_ID)))
+        .thenReturn(enrolled);
+    when(enrollmentMapper.toResponse(enrolled)).thenReturn(response);
 
-    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID))
-        .thenReturn(Optional.empty());
-    when(idempotencyRepositoryPort.insert(any())).thenReturn(processingRecord());
-    when(enrollmentCongressPort.findCongressSummaryById(CONGRESS_ID)).thenReturn(Optional.of(congressSummary()));
-    when(walletPaymentPort.registerPayment(any(), any(), any())).thenReturn(PAYMENT_ID);
-    when(enrollmentRepositoryPort.save(any())).thenReturn(savedEnrollment);
-    when(enrollmentMapper.toResponse(savedEnrollment)).thenReturn(enrollmentResponse());
-    when(idempotencyRepositoryPort.update(any())).thenReturn(succeededRecord());
+    EnrollParticipantResult result = useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester());
 
-    useCase.execute(CONGRESS_ID, request, IDEMPOTENCY_KEY, requester);
-
-    verify(idempotencyRepositoryPort).update(argThatStatus(EnrollmentIdempotencyStatus.SUCCEEDED));
+    assertThat(result.isReplay()).isTrue();
+    assertThat(result.getEnrollment()).isEqualTo(response);
+    verifyNoInteractions(walletPaymentPort);
   }
 
-  // --- Helpers ---
+  @Test
+  void processingWithoutPaymentRetriesWalletUsingPersistedSnapshot() {
+    EnrollmentIdempotencyRecord record = processingRecord(IDEMPOTENCY_KEY, null);
+    EnrollmentIdempotencyRecord recordWithPayment = record.toBuilder().paymentId(PAYMENT_ID).build();
+    Enrollment enrolled = enrollment();
+    EnrollmentResponse response = enrollmentResponse();
+
+    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.of(record));
+    when(walletPaymentPort.registerPayment(any(), eq(IDEMPOTENCY_KEY), eq("token"))).thenReturn(PAYMENT_ID);
+    when(enrollmentRegistrationTransactions.recordWalletPayment(record, PAYMENT_ID)).thenReturn(recordWithPayment);
+    when(enrollmentRegistrationTransactions.completeSuccessfulEnrollment(any(), any(), eq(PAYMENT_ID)))
+        .thenReturn(enrolled);
+    when(enrollmentMapper.toResponse(enrolled)).thenReturn(response);
+
+    EnrollParticipantResult result = useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester());
+
+    assertThat(result.isReplay()).isTrue();
+    assertThat(result.getEnrollment()).isEqualTo(response);
+    verifyNoInteractions(enrollmentCongressPort);
+  }
+
+  @Test
+  void insufficientFundsMarksFailed() {
+    EnrollmentIdempotencyRecord processing = processingRecord(IDEMPOTENCY_KEY, null);
+    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
+    when(enrollmentCongressPort.findPublicEnrollmentCongressById(CONGRESS_ID)).thenReturn(Optional.of(summary()));
+    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID)).thenReturn(Optional.empty());
+    when(enrollmentRegistrationTransactions.createProcessingRecord(any())).thenReturn(processing);
+    when(walletPaymentPort.registerPayment(any(), eq(IDEMPOTENCY_KEY), eq("token")))
+        .thenThrow(new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "wallet.insufficient_funds", "Insufficient funds"));
+
+    assertThatThrownBy(() -> useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester()))
+        .isInstanceOf(ApiException.class)
+        .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("wallet.insufficient_funds"));
+
+    verify(enrollmentRegistrationTransactions).markFailed(processing);
+  }
+
+  @Test
+  void walletConflictKeepsProcessingWithoutFailedMark() {
+    EnrollmentIdempotencyRecord processing = processingRecord(IDEMPOTENCY_KEY, null);
+    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
+    when(enrollmentCongressPort.findPublicEnrollmentCongressById(CONGRESS_ID)).thenReturn(Optional.of(summary()));
+    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID)).thenReturn(Optional.empty());
+    when(enrollmentRegistrationTransactions.createProcessingRecord(any())).thenReturn(processing);
+    when(walletPaymentPort.registerPayment(any(), eq(IDEMPOTENCY_KEY), eq("token")))
+        .thenThrow(new ApiException(HttpStatus.CONFLICT, "resource.conflict", "conflict"));
+
+    assertThatThrownBy(() -> useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester()))
+        .isInstanceOf(ApiException.class)
+        .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+
+    verify(enrollmentRegistrationTransactions, never()).markFailed(any());
+  }
+
+  @Test
+  void ambiguousWalletErrorKeepsProcessingWithoutFailedMark() {
+    EnrollmentIdempotencyRecord processing = processingRecord(IDEMPOTENCY_KEY, null);
+    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY)).thenReturn(Optional.empty());
+    when(enrollmentCongressPort.findPublicEnrollmentCongressById(CONGRESS_ID)).thenReturn(Optional.of(summary()));
+    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID)).thenReturn(Optional.empty());
+    when(enrollmentRegistrationTransactions.createProcessingRecord(any())).thenReturn(processing);
+    when(walletPaymentPort.registerPayment(any(), eq(IDEMPOTENCY_KEY), eq("token")))
+        .thenThrow(new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "system.integration_error", "down"));
+
+    assertThatThrownBy(() -> useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester()))
+        .isInstanceOf(ApiException.class)
+        .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+
+    verify(enrollmentRegistrationTransactions, never()).markFailed(any());
+  }
+
+  @Test
+  void concurrentProcessingInsertRecoversByExistingKeyAndReturnsReplay() {
+    EnrollmentIdempotencyRecord succeeded = succeededRecord(IDEMPOTENCY_KEY, PAYMENT_ID);
+    Enrollment existing = enrollment();
+    EnrollmentResponse response = enrollmentResponse();
+
+    when(idempotencyRepositoryPort.findByKey(IDEMPOTENCY_KEY))
+        .thenReturn(Optional.empty(), Optional.of(succeeded));
+    when(enrollmentCongressPort.findPublicEnrollmentCongressById(CONGRESS_ID)).thenReturn(Optional.of(summary()));
+    when(idempotencyRepositoryPort.findActiveByCongressIdAndUserId(CONGRESS_ID, USER_ID)).thenReturn(Optional.empty());
+    when(enrollmentRegistrationTransactions.createProcessingRecord(any()))
+        .thenThrow(new ApiException(HttpStatus.CONFLICT, "resource.conflict", "duplicate active key"));
+    when(enrollmentRepositoryPort.findByCongressIdAndUserId(CONGRESS_ID, USER_ID)).thenReturn(Optional.of(existing));
+    when(enrollmentMapper.toResponse(existing)).thenReturn(response);
+
+    EnrollParticipantResult result = useCase.execute(
+        CONGRESS_ID,
+        new CreateEnrollmentRequest(PAYMENT_DATE),
+        IDEMPOTENCY_KEY,
+        participantRequester());
+
+    assertThat(result.isReplay()).isTrue();
+    assertThat(result.getEnrollment()).isEqualTo(response);
+    verifyNoInteractions(walletPaymentPort);
+  }
 
   private EnrollmentRequesterContext participantRequester() {
     return requester(Set.of(Role.PARTICIPANT));
@@ -344,71 +361,60 @@ class EnrollParticipantUseCaseTest {
     return EnrollmentRequesterContext.builder()
         .userId(USER_ID)
         .roles(roles)
-        .accessToken("test-token")
+        .accessToken("token")
         .build();
   }
 
-  private CongressEnrollmentSummary congressSummary() {
+  private CongressEnrollmentSummary summary() {
     return CongressEnrollmentSummary.builder()
         .congressId(CONGRESS_ID)
-        .institutionId(UUID.randomUUID())
-        .congressName("Test Congress")
-        .institutionName("Test Institution")
-        .price(PRICE)
+        .institutionId(INSTITUTION_ID)
+        .createdBy(UUID.randomUUID())
+        .congressName("  Congress Name  ")
+        .institutionName(" Institution Name ")
+        .price(AMOUNT)
         .build();
   }
 
-  private EnrollmentIdempotencyRecord processingRecord() {
-    return buildRecord(EnrollmentIdempotencyStatus.PROCESSING, null, null);
-  }
-
-  private EnrollmentIdempotencyRecord succeededRecord() {
-    return buildRecord(EnrollmentIdempotencyStatus.SUCCEEDED, ENROLLMENT_ID, PAYMENT_ID);
-  }
-
-  private EnrollmentIdempotencyRecord failedRecord() {
-    return buildRecord(EnrollmentIdempotencyStatus.FAILED, null, null);
-  }
-
-  private EnrollmentIdempotencyRecord buildRecord(
-      EnrollmentIdempotencyStatus status, UUID enrollmentId, UUID paymentId) {
+  private EnrollmentIdempotencyRecord processingRecord(String key, UUID paymentId) {
     return EnrollmentIdempotencyRecord.builder()
-        .idempotencyKey(IDEMPOTENCY_KEY)
+        .idempotencyKey(key)
         .congressId(CONGRESS_ID)
         .userId(USER_ID)
         .paymentDate(PAYMENT_DATE)
-        .requestHash(computeTestHash(CONGRESS_ID, USER_ID, PAYMENT_DATE))
-        .status(status)
-        .enrollmentId(enrollmentId)
+        .requestHash("hash")
+        .status(EnrollmentIdempotencyStatus.PROCESSING)
         .paymentId(paymentId)
+        .institutionId(INSTITUTION_ID)
+        .congressNameSnapshot("Congress Name")
+        .institutionNameSnapshot("Institution Name")
+        .amount(AMOUNT)
         .createdAt(Instant.now())
         .updatedAt(Instant.now())
         .build();
   }
 
-  private String computeTestHash(UUID congressId, UUID userId, LocalDate paymentDate) {
-    String raw = congressId.toString() + "|" + userId.toString() + "|" + paymentDate.toString();
-    try {
-      java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
-      byte[] digest = md.digest(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-      StringBuilder sb = new StringBuilder();
-      for (byte b : digest) {
-        sb.append(String.format("%02x", b));
-      }
-      return sb.toString();
-    } catch (java.security.NoSuchAlgorithmException e) {
-      throw new RuntimeException(e);
-    }
+  private EnrollmentIdempotencyRecord succeededRecord(String key, UUID paymentId) {
+    return processingRecord(key, paymentId).toBuilder()
+        .status(EnrollmentIdempotencyStatus.SUCCEEDED)
+        .enrollmentId(ENROLLMENT_ID)
+        .build();
   }
 
-  private Enrollment savedEnrollment() {
+  private EnrollmentIdempotencyRecord failedRecord(String key) {
+    return processingRecord(key, null).toBuilder()
+        .status(EnrollmentIdempotencyStatus.FAILED)
+        .build();
+  }
+
+  private Enrollment enrollment() {
     return Enrollment.builder()
         .id(ENROLLMENT_ID)
         .congressId(CONGRESS_ID)
         .userId(USER_ID)
         .paymentId(PAYMENT_ID)
-        .enrolledAt(Instant.now())
         .paymentDate(PAYMENT_DATE)
+        .enrolledAt(Instant.now())
         .createdBy(USER_ID)
         .build();
   }
@@ -419,13 +425,30 @@ class EnrollParticipantUseCaseTest {
         .congressId(CONGRESS_ID)
         .userId(USER_ID)
         .paymentId(PAYMENT_ID)
-        .enrolledAt(Instant.now())
         .paymentDate(PAYMENT_DATE)
+        .enrolledAt(Instant.now())
         .build();
   }
 
-  private EnrollmentIdempotencyRecord argThatStatus(EnrollmentIdempotencyStatus expectedStatus) {
-    return org.mockito.ArgumentMatchers.argThat(
-        record -> record != null && record.getStatus() == expectedStatus);
+  private String expectedHashFromSnapshot(EnrollmentIdempotencyRecord record) {
+    String raw = record.getCongressId() + "|"
+        + record.getUserId() + "|"
+        + record.getInstitutionId() + "|"
+        + record.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString() + "|"
+        + record.getPaymentDate() + "|"
+        + record.getCongressNameSnapshot().trim() + "|"
+        + record.getInstitutionNameSnapshot().trim();
+
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
+      byte[] digest = md.digest(raw.getBytes(StandardCharsets.UTF_8));
+      StringBuilder sb = new StringBuilder();
+      for (byte b : digest) {
+        sb.append(String.format("%02x", b));
+      }
+      return sb.toString();
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 }

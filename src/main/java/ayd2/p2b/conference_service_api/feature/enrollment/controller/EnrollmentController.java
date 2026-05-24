@@ -46,6 +46,7 @@ public class EnrollmentController {
   private static final int DEFAULT_PAGE = 0;
   private static final int DEFAULT_SIZE = 20;
   private static final int MAX_SIZE = 100;
+  private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 120;
 
   private final EnrollParticipantUseCase enrollParticipantUseCase;
   private final ListUserEnrollmentsUseCase listUserEnrollmentsUseCase;
@@ -71,13 +72,17 @@ public class EnrollmentController {
     if (idempotencyKey == null || idempotencyKey.isBlank()) {
       throw EnrollmentExceptions.validationFailed("Idempotency-Key header is required and must not be blank");
     }
+    String normalizedKey = idempotencyKey.trim();
+    if (normalizedKey.length() > MAX_IDEMPOTENCY_KEY_LENGTH) {
+      throw EnrollmentExceptions.validationFailed("Idempotency-Key must not exceed 120 characters");
+    }
 
     EnrollmentRequesterContext requester = buildRequesterContext(authentication, authorization);
 
-    EnrollParticipantResult result = enrollParticipantUseCase.execute(id, request, idempotencyKey, requester);
+    EnrollParticipantResult result = enrollParticipantUseCase.execute(id, request, normalizedKey, requester);
 
     if (result.isReplay()) {
-      return ResponseEntity.ok(ApiResponse.of(result.getEnrollment(), "Enrollment already exists (replay)"));
+      return ResponseEntity.ok(ApiResponse.of(result.getEnrollment(), "idempotency.replay"));
     }
 
     return ResponseEntity.status(HttpStatus.CREATED)

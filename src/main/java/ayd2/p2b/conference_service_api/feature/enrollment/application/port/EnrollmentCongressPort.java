@@ -7,5 +7,7 @@ import java.util.UUID;
 
 public interface EnrollmentCongressPort {
 
-  Optional<CongressEnrollmentSummary> findCongressSummaryById(UUID congressId);
+  Optional<CongressEnrollmentSummary> findPublicEnrollmentCongressById(UUID congressId);
+
+  Optional<CongressEnrollmentSummary> findManageableCongressById(UUID congressId);
 }

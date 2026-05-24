@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -48,6 +49,18 @@ public class EnrollmentIdempotencyRecordEntity {
 
   @Column(name = "payment_id")
   private UUID paymentId;
+
+  @Column(name = "institution_id", nullable = false)
+  private UUID institutionId;
+
+  @Column(name = "congress_name_snapshot", nullable = false, length = 255)
+  private String congressNameSnapshot;
+
+  @Column(name = "institution_name_snapshot", nullable = false, length = 255)
+  private String institutionNameSnapshot;
+
+  @Column(name = "amount", nullable = false, precision = 12, scale = 2)
+  private BigDecimal amount;
 
   @Column(name = "created_at", nullable = false)
   private Instant createdAt;

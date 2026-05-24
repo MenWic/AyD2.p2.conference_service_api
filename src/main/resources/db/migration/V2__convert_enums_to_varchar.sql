@@ -1,9 +1,26 @@
 ALTER TABLE activities
+    DROP CONSTRAINT IF EXISTS ck_activity_type;
+
+ALTER TABLE activities
+    DROP CONSTRAINT IF EXISTS ck_workshop_capacity;
+
+ALTER TABLE activities
     ALTER COLUMN type TYPE VARCHAR(20) USING type::text;
 
 ALTER TABLE activities
     ADD CONSTRAINT ck_activity_type
     CHECK (type IN ('PONENCIA', 'TALLER'));
+
+ALTER TABLE activities
+    ADD CONSTRAINT ck_workshop_capacity
+    CHECK (
+        (type = 'TALLER' AND workshop_capacity IS NOT NULL AND workshop_capacity > 0)
+        OR
+        (type = 'PONENCIA' AND workshop_capacity IS NULL)
+    );
+
+ALTER TABLE activity_leaders
+    DROP CONSTRAINT IF EXISTS ck_activity_leader_type;
 
 ALTER TABLE activity_leaders
     ALTER COLUMN leader_type TYPE VARCHAR(30) USING leader_type::text;

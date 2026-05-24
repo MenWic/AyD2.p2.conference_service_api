@@ -89,6 +89,20 @@ class EnrollmentControllerTest {
   }
 
   @Test
+  void enroll_too_long_idempotency_key_returns_400() throws Exception {
+    String token = buildToken(USER_ID, "PARTICIPANT");
+    String longKey = "k".repeat(121);
+
+    mockMvc.perform(post("/congresses/{id}/enrollments", CONGRESS_ID)
+            .header("Authorization", "Bearer " + token)
+            .header("Idempotency-Key", longKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"paymentDate\":\"2026-06-15\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("validation.failed"));
+  }
+
+  @Test
   void enroll_without_token_returns_401() throws Exception {
     mockMvc.perform(post("/congresses/{id}/enrollments", CONGRESS_ID)
         .header("Idempotency-Key", "key-123")
@@ -135,6 +149,7 @@ class EnrollmentControllerTest {
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"paymentDate\":\"2026-06-15\"}"))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.message").value("idempotency.replay"))
         .andExpect(jsonPath("$.data.id").value(ENROLLMENT_ID.toString()));
   }
 
