@@ -12,4 +12,5 @@ import java.util.UUID;
 public class DiplomaRequesterContext {
     UUID userId;
     Set<Role> roles;
+    String accessToken;
 }

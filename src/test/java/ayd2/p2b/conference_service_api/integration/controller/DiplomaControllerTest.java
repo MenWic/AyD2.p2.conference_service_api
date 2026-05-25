@@ -4,7 +4,9 @@ import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
 import ayd2.p2b.conference_service_api.feature.diploma.application.get.GetDiplomaMetadataUseCase;
 import ayd2.p2b.conference_service_api.feature.diploma.application.list_by_user.ListUserDiplomasUseCase;
+import ayd2.p2b.conference_service_api.feature.diploma.application.print_data.GetDiplomaPrintDataUseCase;
 import ayd2.p2b.conference_service_api.feature.diploma.domain.model.DiplomaType;
+import ayd2.p2b.conference_service_api.feature.diploma.dto.response.DiplomaPrintDataResponse;
 import ayd2.p2b.conference_service_api.feature.diploma.dto.response.DiplomaResponse;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -49,6 +51,8 @@ class DiplomaControllerTest {
     private ListUserDiplomasUseCase listUserDiplomasUseCase;
     @MockitoBean
     private GetDiplomaMetadataUseCase getDiplomaMetadataUseCase;
+    @MockitoBean
+    private GetDiplomaPrintDataUseCase getDiplomaPrintDataUseCase;
 
     @Test
     void shouldReturnOkForSelfDiplomaList() throws Exception {
@@ -149,6 +153,85 @@ class DiplomaControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").exists())
                 .andExpect(jsonPath("$.data.id").value(diplomaId.toString()));
+    }
+
+    @Test
+    void shouldReturnOkForOwnerDiplomaPrintData() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID diplomaId = UUID.randomUUID();
+        UUID congressId = UUID.randomUUID();
+        DiplomaPrintDataResponse response = DiplomaPrintDataResponse.builder()
+                .diplomaId(diplomaId)
+                .userId(userId)
+                .userFullName("María Pérez")
+                .congressId(congressId)
+                .congressName("Congreso")
+                .activityId(null)
+                .activityName(null)
+                .type(DiplomaType.PARTICIPATION)
+                .issuedAt(OffsetDateTime.parse("2026-10-10T10:00:00Z"))
+                .build();
+
+        when(getDiplomaPrintDataUseCase.execute(eq(diplomaId), any())).thenReturn(response);
+
+        mockMvc.perform(get("/diplomas/{id}/print-data", diplomaId)
+                        .header("Authorization", "Bearer " + tokenWithRoles(userId, List.of("PARTICIPANT"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.diplomaId").value(diplomaId.toString()))
+                .andExpect(jsonPath("$.data.userFullName").value("María Pérez"))
+                .andExpect(jsonPath("$.data.type").value("PARTICIPATION"));
+    }
+
+    @Test
+    void shouldReturnForbiddenForNonOwnerDiplomaPrintData() throws Exception {
+        UUID diplomaId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+
+        when(getDiplomaPrintDataUseCase.execute(eq(diplomaId), any()))
+                .thenThrow(new ApiException(HttpStatus.FORBIDDEN, "auth.forbidden", "owner only"));
+
+        mockMvc.perform(get("/diplomas/{id}/print-data", diplomaId)
+                        .header("Authorization", "Bearer " + tokenWithRoles(requesterId, List.of("PARTICIPANT"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("auth.forbidden"));
+    }
+
+    @Test
+    void shouldReturnUnauthorizedWhenAuthorizationHeaderIsNotBearerForPrintData() throws Exception {
+        UUID requesterId = UUID.randomUUID();
+
+        mockMvc.perform(get("/diplomas/{id}/print-data", UUID.randomUUID())
+                        .header("Authorization", "Token " + tokenWithRoles(requesterId, List.of("PARTICIPANT"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("auth.token_invalid"));
+    }
+
+    @Test
+    void printDataEndpointShouldNotReturnPdfContentType() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID diplomaId = UUID.randomUUID();
+        DiplomaPrintDataResponse response = DiplomaPrintDataResponse.builder()
+                .diplomaId(diplomaId)
+                .userId(userId)
+                .userFullName("María Pérez")
+                .congressId(UUID.randomUUID())
+                .congressName("Congreso")
+                .type(DiplomaType.PARTICIPATION)
+                .issuedAt(OffsetDateTime.parse("2026-10-10T10:00:00Z"))
+                .build();
+
+        when(getDiplomaPrintDataUseCase.execute(eq(diplomaId), any())).thenReturn(response);
+
+        mockMvc.perform(get("/diplomas/{id}/print-data", diplomaId)
+                        .header("Authorization", "Bearer " + tokenWithRoles(userId, List.of("PARTICIPANT"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists())
+                .andExpect(result -> {
+                    String contentType = result.getResponse().getContentType();
+                    org.assertj.core.api.Assertions.assertThat(contentType)
+                            .isNotBlank()
+                            .doesNotContain("application/pdf");
+                });
     }
 
     private DiplomaResponse participationResponse(UUID userId) {

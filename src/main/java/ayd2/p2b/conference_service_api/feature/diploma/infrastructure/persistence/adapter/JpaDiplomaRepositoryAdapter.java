@@ -61,7 +61,7 @@ public class JpaDiplomaRepositoryAdapter implements DiplomaRepositoryPort {
 
     @Override
     public Diploma save(Diploma diploma) {
-        DiplomaEntity saved = diplomaRepository.save(diplomaMapper.toEntity(diploma));
+        DiplomaEntity saved = diplomaRepository.saveAndFlush(diplomaMapper.toEntity(diploma));
         return diplomaMapper.toDomain(saved);
     }
 
