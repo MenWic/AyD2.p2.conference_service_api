@@ -2,6 +2,8 @@ package ayd2.p2b.conference_service_api.integration.controller;
 
 import ayd2.p2b.conference_service_api.feature.report.application.attendance_summary.AttendanceByActivityReportUseCase;
 import ayd2.p2b.conference_service_api.feature.report.application.congresses_by_institution.CongressesByInstitutionReportUseCase;
+import ayd2.p2b.conference_service_api.feature.report.application.earnings.EarningsReportUseCase;
+import ayd2.p2b.conference_service_api.feature.report.application.earnings_by_congress.EarningsByCongressReportUseCase;
 import ayd2.p2b.conference_service_api.feature.report.application.exception.ReportExceptions;
 import ayd2.p2b.conference_service_api.feature.report.application.participants.ParticipantsReportUseCase;
 import ayd2.p2b.conference_service_api.feature.report.application.workshop_reservations.WorkshopReservationsReportUseCase;
@@ -9,6 +11,11 @@ import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceAct
 import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceByActivityReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.CongressByInstitutionItem;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.CongressesByInstitutionReportResponse;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsByCongressItem;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsByCongressReportResponse;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsCongressItem;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsInstitutionItem;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.ParticipantItem;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.ParticipantsReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.ParticipationTypeEnum;
@@ -18,6 +25,7 @@ import ayd2.p2b.conference_service_api.feature.report.dto.response.WorkshopReser
 import ayd2.p2b.conference_service_api.feature.report.infrastructure.export.HtmlReportExporter;
 import ayd2.p2b.conference_service_api.feature.report.infrastructure.export.ReportTableModel;
 import ayd2.p2b.conference_service_api.feature.report.infrastructure.export.ReportTableModelFactory;
+import ayd2.p2b.conference_service_api.integration.exception.IntegrationExceptions;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
@@ -38,6 +46,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -66,6 +75,10 @@ class ReportControllerTest {
     private WorkshopReservationsReportUseCase workshopReservationsReportUseCase;
     @MockitoBean
     private CongressesByInstitutionReportUseCase congressesByInstitutionReportUseCase;
+    @MockitoBean
+    private EarningsByCongressReportUseCase earningsByCongressReportUseCase;
+    @MockitoBean
+    private EarningsReportUseCase earningsReportUseCase;
     @MockitoBean
     private HtmlReportExporter htmlReportExporter;
     @MockitoBean
@@ -215,6 +228,160 @@ class ReportControllerTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("auth.forbidden"));
+    }
+
+    @Test
+    void earnings_by_congress_with_congress_admin_token_returns_200_json_wrapper() throws Exception {
+        String token = buildToken(USER_ID, "CONGRESS_ADMIN");
+        EarningsByCongressReportResponse response = EarningsByCongressReportResponse.builder()
+                .items(List.of(EarningsByCongressItem.builder()
+                        .congressId(CONGRESS_ID)
+                        .congressName("AydConf 2026")
+                        .totalAmount(new BigDecimal("1200.00"))
+                        .commissionAmount(new BigDecimal("120.00"))
+                        .netAmount(new BigDecimal("1080.00"))
+                        .paymentCount(24)
+                        .build()))
+                .totalItems(1)
+                .grandTotalAmount(new BigDecimal("1200.00"))
+                .grandTotalCommission(new BigDecimal("120.00"))
+                .grandTotalNet(new BigDecimal("1080.00"))
+                .build();
+        when(earningsByCongressReportUseCase.execute(any(), any(), any(), any())).thenReturn(response);
+
+        mockMvc.perform(get("/reports/earnings-by-congress")
+                        .param("congressId", CONGRESS_ID.toString())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists())
+                .andExpect(jsonPath("$.data.totalItems").value(1));
+    }
+
+    @Test
+    void earnings_by_congress_with_html_format_returns_html() throws Exception {
+        String token = buildToken(USER_ID, "CONGRESS_ADMIN");
+        when(earningsByCongressReportUseCase.execute(any(), any(), any(), any()))
+                .thenReturn(EarningsByCongressReportResponse.builder().items(List.of()).totalItems(0).build());
+        when(reportTableModelFactory.earningsByCongress(any())).thenReturn(sampleTableModel());
+        when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html>earnings-by-congress</html>");
+
+        mockMvc.perform(get("/reports/earnings-by-congress")
+                        .param("congressId", CONGRESS_ID.toString())
+                        .param("format", "html")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/html"));
+    }
+
+    @Test
+    void earnings_by_congress_with_invalid_format_returns_400() throws Exception {
+        String token = buildToken(USER_ID, "CONGRESS_ADMIN");
+
+        mockMvc.perform(get("/reports/earnings-by-congress")
+                        .param("congressId", CONGRESS_ID.toString())
+                        .param("format", "pdf")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation.failed"));
+    }
+
+    @Test
+    void earnings_by_congress_missing_congress_id_returns_400() throws Exception {
+        String token = buildToken(USER_ID, "CONGRESS_ADMIN");
+        when(earningsByCongressReportUseCase.execute(isNull(), any(), any(), any()))
+                .thenThrow(ReportExceptions.missingCongressId());
+
+        mockMvc.perform(get("/reports/earnings-by-congress")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation.failed"));
+    }
+
+    @Test
+    void earnings_by_congress_forbidden_from_use_case_maps_to_403() throws Exception {
+        String token = buildToken(USER_ID, "CONGRESS_ADMIN");
+        when(earningsByCongressReportUseCase.execute(any(), any(), any(), any()))
+                .thenThrow(ReportExceptions.forbidden("Only CONGRESS_ADMIN"));
+
+        mockMvc.perform(get("/reports/earnings-by-congress")
+                        .param("congressId", CONGRESS_ID.toString())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("auth.forbidden"));
+    }
+
+    @Test
+    void earnings_by_congress_wallet_unavailable_from_use_case_maps_to_503() throws Exception {
+        String token = buildToken(USER_ID, "CONGRESS_ADMIN");
+        when(earningsByCongressReportUseCase.execute(any(), any(), any(), any()))
+                .thenThrow(IntegrationExceptions.walletUnavailable("Wallet service is currently unavailable"));
+
+        mockMvc.perform(get("/reports/earnings-by-congress")
+                        .param("congressId", CONGRESS_ID.toString())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("system.integration_error"));
+    }
+
+    @Test
+    void earnings_with_system_admin_token_returns_200_json_wrapper() throws Exception {
+        String token = buildToken(USER_ID, "SYSTEM_ADMIN");
+        EarningsReportResponse response = EarningsReportResponse.builder()
+                .items(List.of(EarningsInstitutionItem.builder()
+                        .institutionId(UUID.randomUUID())
+                        .institutionName("USAC")
+                        .congresses(List.of(EarningsCongressItem.builder()
+                                .congressId(CONGRESS_ID)
+                                .congressName("AydConf 2026")
+                                .totalAmount(new BigDecimal("1200.00"))
+                                .commissionAmount(new BigDecimal("120.00"))
+                                .netAmount(new BigDecimal("1080.00"))
+                                .paymentCount(24)
+                                .build()))
+                        .institutionTotalAmount(new BigDecimal("1200.00"))
+                        .institutionTotalCommission(new BigDecimal("120.00"))
+                        .institutionTotalNet(new BigDecimal("1080.00"))
+                        .paymentCount(24)
+                        .build()))
+                .totalItems(1)
+                .grandTotalAmount(new BigDecimal("1200.00"))
+                .grandTotalCommission(new BigDecimal("120.00"))
+                .grandTotalNet(new BigDecimal("1080.00"))
+                .build();
+        when(earningsReportUseCase.execute(any(), any(), any(), any())).thenReturn(response);
+
+        mockMvc.perform(get("/reports/earnings")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists())
+                .andExpect(jsonPath("$.data.totalItems").value(1));
+    }
+
+    @Test
+    void earnings_with_html_format_returns_html() throws Exception {
+        String token = buildToken(USER_ID, "SYSTEM_ADMIN");
+        when(earningsReportUseCase.execute(any(), any(), any(), any()))
+                .thenReturn(EarningsReportResponse.builder().items(List.of()).totalItems(0).build());
+        when(reportTableModelFactory.earnings(any())).thenReturn(sampleTableModel());
+        when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html>earnings</html>");
+
+        mockMvc.perform(get("/reports/earnings")
+                        .param("format", "html")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/html"));
+    }
+
+    @Test
+    void earnings_wallet_unavailable_from_use_case_maps_to_503() throws Exception {
+        String token = buildToken(USER_ID, "SYSTEM_ADMIN");
+        when(earningsReportUseCase.execute(any(), any(), any(), any()))
+                .thenThrow(IntegrationExceptions.walletUnavailable("Wallet service is currently unavailable"));
+
+        mockMvc.perform(get("/reports/earnings")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("system.integration_error"));
     }
 
     @Test

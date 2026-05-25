@@ -27,7 +27,7 @@ public final class OpenApiExamples {
             {"status":503,"detail":"IAM unavailable","code":"integration.iam_unavailable"}
             """;
     public static final String WALLET_UNAVAILABLE_ERROR = """
-            {"status":503,"detail":"Wallet unavailable","code":"integration.wallet_unavailable"}
+            {"status":503,"detail":"Wallet service is currently unavailable","code":"system.integration_error"}
             """;
     public static final String WALLET_INSUFFICIENT_FUNDS_ERROR = """
             {"status":422,"detail":"Insufficient funds","code":"wallet.insufficient_funds"}
@@ -101,6 +101,12 @@ public final class OpenApiExamples {
             """;
     public static final String CONGRESSES_BY_INSTITUTION_REPORT_SUCCESS = """
             {"data":{"items":[{"institutionId":"d2719de1-0409-4d2e-bf9b-a06f0ea74df7","institutionName":"Universidad de San Carlos","congressId":"7d899e63-481d-4df8-87f1-7a8d8f437b68","congressName":"Congreso Nacional de Ingenieria","startDate":"2026-09-10","endDate":"2026-09-12","location":"Ciudad de Guatemala","price":85.00}],"totalItems":1}}
+            """;
+    public static final String EARNINGS_BY_CONGRESS_REPORT_SUCCESS = """
+            {"data":{"items":[{"congressId":"7d899e63-481d-4df8-87f1-7a8d8f437b68","congressName":"Congreso Nacional de Ingenieria","totalAmount":1200.00,"commissionAmount":120.00,"netAmount":1080.00,"paymentCount":24}],"totalItems":1,"grandTotalAmount":1200.00,"grandTotalCommission":120.00,"grandTotalNet":1080.00}}
+            """;
+    public static final String EARNINGS_REPORT_SUCCESS = """
+            {"data":{"items":[{"institutionId":"d2719de1-0409-4d2e-bf9b-a06f0ea74df7","institutionName":"Universidad de San Carlos","congresses":[{"congressId":"7d899e63-481d-4df8-87f1-7a8d8f437b68","congressName":"Congreso Nacional de Ingenieria","totalAmount":1200.00,"commissionAmount":120.00,"netAmount":1080.00,"paymentCount":24}],"institutionTotalAmount":1200.00,"institutionTotalCommission":120.00,"institutionTotalNet":1080.00,"paymentCount":24}],"totalItems":1,"grandTotalAmount":1200.00,"grandTotalCommission":120.00,"grandTotalNet":1080.00}}
             """;
     public static final String PAGE_RESPONSE_SUCCESS = """
             {"data":{"items":[],"page":0,"size":20,"totalItems":0,"totalPages":0}}

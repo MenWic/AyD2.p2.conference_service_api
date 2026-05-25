@@ -4,6 +4,11 @@ import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceAct
 import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceByActivityReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.CongressByInstitutionItem;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.CongressesByInstitutionReportResponse;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsByCongressItem;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsByCongressReportResponse;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsCongressItem;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsInstitutionItem;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.ParticipantItem;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.ParticipantsReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.ParticipationTypeEnum;
@@ -203,5 +208,78 @@ class ReportTableModelFactoryTest {
         ReportTableModel table = factory.congressesByInstitution(response);
 
         assertThat(table.getRows()).isEmpty();
+    }
+
+    @Test
+    void earnings_by_congress_headers_and_values_are_mapped() {
+        EarningsByCongressReportResponse response = EarningsByCongressReportResponse.builder()
+                .items(List.of(EarningsByCongressItem.builder()
+                        .congressName("AydConf 2026")
+                        .totalAmount(new BigDecimal("1234.50"))
+                        .commissionAmount(new BigDecimal("123.45"))
+                        .netAmount(new BigDecimal("1111.05"))
+                        .paymentCount(20)
+                        .build()))
+                .totalItems(1)
+                .build();
+
+        ReportTableModel table = factory.earningsByCongress(response);
+
+        assertThat(table.getHeaders()).containsExactly("Congreso", "Total", "Comisión", "Neto", "Pagos");
+        assertThat(table.getRows()).hasSize(1);
+        assertThat(table.getRows().get(0)).containsExactly("AydConf 2026", "1234.50", "123.45", "1111.05", "20");
+    }
+
+    @Test
+    void platform_earnings_nested_rows_render_one_row_per_institution_and_congress() {
+        EarningsReportResponse response = EarningsReportResponse.builder()
+                .items(List.of(EarningsInstitutionItem.builder()
+                        .institutionName("USAC")
+                        .congresses(List.of(
+                                EarningsCongressItem.builder()
+                                        .congressName("AydConf 2026")
+                                        .totalAmount(new BigDecimal("1000.00"))
+                                        .commissionAmount(new BigDecimal("100.00"))
+                                        .netAmount(new BigDecimal("900.00"))
+                                        .paymentCount(10)
+                                        .build(),
+                                EarningsCongressItem.builder()
+                                        .congressName("AydConf 2027")
+                                        .totalAmount(new BigDecimal("2000.00"))
+                                        .commissionAmount(new BigDecimal("200.00"))
+                                        .netAmount(new BigDecimal("1800.00"))
+                                        .paymentCount(20)
+                                        .build()
+                        ))
+                        .build()))
+                .totalItems(1)
+                .build();
+
+        ReportTableModel table = factory.earnings(response);
+
+        assertThat(table.getHeaders()).containsExactly("Institución", "Congreso", "Total", "Comisión", "Neto", "Pagos");
+        assertThat(table.getRows()).hasSize(2);
+        assertThat(table.getRows().get(0)).containsExactly("USAC", "AydConf 2026", "1000.00", "100.00", "900.00", "10");
+        assertThat(table.getRows().get(1)).containsExactly("USAC", "AydConf 2027", "2000.00", "200.00", "1800.00", "20");
+    }
+
+    @Test
+    void platform_earnings_institution_without_congresses_renders_single_totals_row() {
+        EarningsReportResponse response = EarningsReportResponse.builder()
+                .items(List.of(EarningsInstitutionItem.builder()
+                        .institutionName("Landivar")
+                        .congresses(List.of())
+                        .institutionTotalAmount(new BigDecimal("300.00"))
+                        .institutionTotalCommission(new BigDecimal("30.00"))
+                        .institutionTotalNet(new BigDecimal("270.00"))
+                        .paymentCount(3)
+                        .build()))
+                .totalItems(1)
+                .build();
+
+        ReportTableModel table = factory.earnings(response);
+
+        assertThat(table.getRows()).hasSize(1);
+        assertThat(table.getRows().get(0)).containsExactly("Landivar", "", "300.00", "30.00", "270.00", "3");
     }
 }
