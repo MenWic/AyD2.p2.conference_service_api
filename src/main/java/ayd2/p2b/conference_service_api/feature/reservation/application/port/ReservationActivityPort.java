@@ -8,4 +8,6 @@ import java.util.UUID;
 public interface ReservationActivityPort {
 
     Optional<ReservationActivitySummary> findActivityById(UUID activityId);
+
+    Optional<ReservationActivitySummary> findActivityByIdForReservationUpdate(UUID activityId);
 }

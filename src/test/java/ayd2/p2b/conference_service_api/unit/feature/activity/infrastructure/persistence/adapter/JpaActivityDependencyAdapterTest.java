@@ -49,6 +49,23 @@ class JpaActivityDependencyAdapterTest {
     }
 
     @Test
+    void shouldIncludeReservationsAndAttendancesAsBlockingDependencies() {
+        UUID activityId = UUID.randomUUID();
+
+        when(entityManager.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter("activityId", activityId)).thenReturn(query);
+        when(query.getSingleResult())
+                .thenReturn(Boolean.TRUE)
+                .thenReturn(Boolean.TRUE)
+                .thenReturn(Boolean.FALSE)
+                .thenReturn(Boolean.FALSE);
+
+        List<String> result = adapter.findBlockingDependencies(activityId);
+
+        assertThat(result).containsExactly("reservations", "attendances");
+    }
+
+    @Test
     void shouldReturnEmptyWhenThereAreNoBlockingDependencies() {
         UUID activityId = UUID.randomUUID();
 

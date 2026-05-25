@@ -41,7 +41,7 @@ public class ReserveActivityUseCase {
     public ReservationResponse execute(UUID activityId, ReservationRequesterContext requester) {
         ReservationAccessPolicy.ensureParticipant(requester);
 
-        ReservationActivitySummary activity = reservationActivityPort.findActivityById(activityId)
+        ReservationActivitySummary activity = reservationActivityPort.findActivityByIdForReservationUpdate(activityId)
                 .orElseThrow(() -> ReservationExceptions.activityNotFound(activityId));
         if (activity.getType() != ActivityType.TALLER) {
             throw ReservationExceptions.reservationRequiresWorkshop(activityId);

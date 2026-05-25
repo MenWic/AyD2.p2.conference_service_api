@@ -73,7 +73,7 @@ class RegisterAttendanceUseCaseTest {
         Attendance saved = savedAttendance(activityId, participantId, requesterId, "PID123");
         AttendanceResponse response = response(saved);
 
-        when(iamUserLookupPort.findUserByPersonalId("PID123", "token"))
+        when(iamUserLookupPort.findUserByPersonalId("PID123"))
                 .thenReturn(Optional.of(IamPersonalIdUserSummary.builder().userId(participantId).personalId("PID123").build()));
         when(attendanceActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
         when(attendanceEnrollmentPort.existsEnrollment(activity.getCongressId(), participantId)).thenReturn(true);
@@ -96,7 +96,7 @@ class RegisterAttendanceUseCaseTest {
         RegisterAttendanceRequest request = request(activityId, "PID777");
         Attendance saved = savedAttendance(activityId, participantId, requesterId, "PID777");
 
-        when(iamUserLookupPort.findUserByPersonalId("PID777", "token"))
+        when(iamUserLookupPort.findUserByPersonalId("PID777"))
                 .thenReturn(Optional.of(IamPersonalIdUserSummary.builder().userId(participantId).personalId("PID777").build()));
         when(attendanceActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
         when(attendanceEnrollmentPort.existsEnrollment(activity.getCongressId(), participantId)).thenReturn(true);
@@ -117,7 +117,7 @@ class RegisterAttendanceUseCaseTest {
         UUID participantId = UUID.randomUUID();
         AttendanceActivitySummary activity = activitySummary(activityId, requesterId, ActivityType.TALLER);
 
-        when(iamUserLookupPort.findUserByPersonalId("PID001", "token"))
+        when(iamUserLookupPort.findUserByPersonalId("PID001"))
                 .thenReturn(Optional.of(IamPersonalIdUserSummary.builder().userId(participantId).personalId("PID001").build()));
         when(attendanceActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
         when(attendanceEnrollmentPort.existsEnrollment(activity.getCongressId(), participantId)).thenReturn(true);
@@ -139,7 +139,7 @@ class RegisterAttendanceUseCaseTest {
         UUID participantId = UUID.randomUUID();
         AttendanceActivitySummary activity = activitySummary(activityId, requesterId, ActivityType.PONENCIA);
 
-        when(iamUserLookupPort.findUserByPersonalId("PID002", "token"))
+        when(iamUserLookupPort.findUserByPersonalId("PID002"))
                 .thenReturn(Optional.of(IamPersonalIdUserSummary.builder().userId(participantId).personalId("PID002").build()));
         when(attendanceActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
         when(attendanceEnrollmentPort.existsEnrollment(activity.getCongressId(), participantId)).thenReturn(false);
@@ -160,7 +160,7 @@ class RegisterAttendanceUseCaseTest {
         UUID participantId = UUID.randomUUID();
         AttendanceActivitySummary activity = activitySummary(activityId, requesterId, ActivityType.PONENCIA);
 
-        when(iamUserLookupPort.findUserByPersonalId("PID003", "token"))
+        when(iamUserLookupPort.findUserByPersonalId("PID003"))
                 .thenReturn(Optional.of(IamPersonalIdUserSummary.builder().userId(participantId).personalId("PID003").build()));
         when(attendanceActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
         when(attendanceEnrollmentPort.existsEnrollment(activity.getCongressId(), participantId)).thenReturn(true);
@@ -179,7 +179,7 @@ class RegisterAttendanceUseCaseTest {
     void shouldRejectUnknownPersonalId() {
         UUID activityId = UUID.randomUUID();
         UUID requesterId = UUID.randomUUID();
-        when(iamUserLookupPort.findUserByPersonalId("UNKNOWN", "token"))
+        when(iamUserLookupPort.findUserByPersonalId("UNKNOWN"))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> useCase.execute(request(activityId, "UNKNOWN"), requester(requesterId)))
@@ -198,7 +198,7 @@ class RegisterAttendanceUseCaseTest {
         UUID participantId = UUID.randomUUID();
         AttendanceActivitySummary activity = activitySummary(activityId, UUID.randomUUID(), ActivityType.PONENCIA);
 
-        when(iamUserLookupPort.findUserByPersonalId("PID009", "token"))
+        when(iamUserLookupPort.findUserByPersonalId("PID009"))
                 .thenReturn(Optional.of(IamPersonalIdUserSummary.builder().userId(participantId).personalId("PID009").build()));
         when(attendanceActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
         when(iamUserLookupPort.isCongressAdminLinkedToInstitution(
@@ -222,7 +222,7 @@ class RegisterAttendanceUseCaseTest {
         Attendance saved = savedAttendance(activityId, participantId, requesterId, "PI-D-SNAPSHOT");
         AttendanceResponse response = response(saved);
 
-        when(iamUserLookupPort.findUserByPersonalId("PI-D-SNAPSHOT", "token"))
+        when(iamUserLookupPort.findUserByPersonalId("PI-D-SNAPSHOT"))
                 .thenReturn(Optional.of(IamPersonalIdUserSummary.builder()
                         .userId(participantId)
                         .personalId("PI-D-SNAPSHOT")

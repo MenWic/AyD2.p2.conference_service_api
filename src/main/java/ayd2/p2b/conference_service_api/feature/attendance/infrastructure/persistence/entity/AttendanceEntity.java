@@ -32,29 +32,29 @@ public class AttendanceEntity {
     @ToString.Include
     private UUID id;
 
-    @Column(name = "activity_id", nullable = false)
+    @Column(name = "activity_id", nullable = false, updatable = false)
     private UUID activityId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "activity_id", insertable = false, updatable = false)
     private ActivityEntity activity;
 
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
-    @Column(name = "personal_id_snapshot", nullable = false, length = 50)
+    @Column(name = "personal_id_snapshot", nullable = false, length = 50, updatable = false)
     private String personalIdSnapshot;
 
-    @Column(name = "registered_by", nullable = false)
+    @Column(name = "registered_by", nullable = false, updatable = false)
     private UUID registeredBy;
 
-    @Column(name = "registered_at", nullable = false)
+    @Column(name = "registered_at", nullable = false, updatable = false)
     private OffsetDateTime registeredAt;
 
-    @Column(name = "created_by", nullable = false)
+    @Column(name = "created_by", nullable = false, updatable = false)
     private UUID createdBy;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
     @PrePersist
