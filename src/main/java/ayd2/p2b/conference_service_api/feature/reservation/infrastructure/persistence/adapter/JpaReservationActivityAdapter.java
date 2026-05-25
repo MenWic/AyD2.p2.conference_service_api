@@ -21,13 +21,27 @@ public class JpaReservationActivityAdapter implements ReservationActivityPort {
 
     @Override
     public Optional<ReservationActivitySummary> findActivityById(UUID activityId) {
-        Query query = entityManager.createNativeQuery("""
+        return queryActivitySummary(activityId, false);
+    }
+
+    @Override
+    public Optional<ReservationActivitySummary> findActivityByIdForReservationUpdate(UUID activityId) {
+        return queryActivitySummary(activityId, true);
+    }
+
+    private Optional<ReservationActivitySummary> queryActivitySummary(UUID activityId, boolean lockForUpdate) {
+        String sql = """
                 select a.id, a.congress_id, c.institution_id, c.created_by, a.type, a.workshop_capacity
                 from activities a
                 join congresses c on c.id = a.congress_id
                 join institutions i on i.id = c.institution_id
                 where a.id = :activityId and i.active = true
-                """);
+                """;
+        if (lockForUpdate) {
+            sql = sql + " for update of a";
+        }
+
+        Query query = entityManager.createNativeQuery(sql);
         query.setParameter("activityId", activityId);
 
         @SuppressWarnings("unchecked")

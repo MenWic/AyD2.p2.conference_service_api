@@ -10,6 +10,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.util.Map;
@@ -18,8 +19,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.headerDoesNotExist;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
@@ -28,6 +29,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class IamUserLookupClientTest {
 
     private static final String BASE_URL = "http://iam.local";
+    private static final String SERVICE_TOKEN = "service-token";
 
     private RestClient.Builder restClientBuilder;
     private MockRestServiceServer server;
@@ -37,7 +39,7 @@ class IamUserLookupClientTest {
     void setUp() {
         restClientBuilder = RestClient.builder();
         server = MockRestServiceServer.bindTo(restClientBuilder).build();
-        client = new IamUserLookupClient(restClientBuilder, BASE_URL);
+        client = new IamUserLookupClient(restClientBuilder, BASE_URL, SERVICE_TOKEN);
     }
 
     @Test
@@ -416,30 +418,23 @@ class IamUserLookupClientTest {
     void shouldReturnUserByPersonalIdWhenExactMatchExists() {
         UUID userId = UUID.randomUUID();
 
-        server.expect(requestTo(containsString(BASE_URL + "/users?search=PID123")))
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
                 .andExpect(method(HttpMethod.GET))
-                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer token"))
+                .andExpect(header("X-Service-Token", SERVICE_TOKEN))
+                .andExpect(headerDoesNotExist(HttpHeaders.AUTHORIZATION))
                 .andRespond(withSuccess(
                         """
                         {
                           "data": {
-                            "items": [
-                              {
-                                "id": "%s",
-                                "personalId": "PID123"
-                              }
-                            ],
-                            "page": 0,
-                            "size": 20,
-                            "totalItems": 1,
-                            "totalPages": 1
+                            "id": "%s",
+                            "personalId": "PID123"
                           }
                         }
                         """.formatted(userId),
                         MediaType.APPLICATION_JSON
                 ));
 
-        var summary = client.findUserByPersonalId("PID123", "token");
+        var summary = client.findUserByPersonalId("PID123");
 
         assertThat(summary).isPresent();
         assertThat(summary.get().getUserId()).isEqualTo(userId);
@@ -448,61 +443,186 @@ class IamUserLookupClientTest {
     }
 
     @Test
-    void shouldReturnEmptyWhenPersonalIdDoesNotMatchExactly() {
-        UUID userId = UUID.randomUUID();
+    void shouldReturnEmptyWhenInternalLookupReturnsNotFound() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andExpect(header("X-Service-Token", SERVICE_TOKEN))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
 
-        server.expect(requestTo(containsString(BASE_URL + "/users?search=PID123")))
-                .andRespond(withSuccess(
-                        """
-                        {
-                          "data": {
-                            "items": [
-                              {
-                                "id": "%s",
-                                "personalId": "PID123X"
-                              }
-                            ],
-                            "page": 0,
-                            "size": 20,
-                            "totalItems": 1,
-                            "totalPages": 1
-                          }
-                        }
-                        """.formatted(userId),
-                        MediaType.APPLICATION_JSON
-                ));
-
-        var summary = client.findUserByPersonalId("PID123", "token");
+        var summary = client.findUserByPersonalId("PID123");
 
         assertThat(summary).isEmpty();
         server.verify();
     }
 
     @Test
-    void shouldThrowIamUnavailableWhenMultipleExactPersonalIdMatchesExist() {
-        UUID firstUserId = UUID.randomUUID();
-        UUID secondUserId = UUID.randomUUID();
+    void shouldThrowIamUnavailableWhenServiceTokenIsBlank() {
+        IamUserLookupClient blankTokenClient = new IamUserLookupClient(restClientBuilder, BASE_URL, "   ");
 
-        server.expect(requestTo(containsString(BASE_URL + "/users?search=PID123")))
+        assertThatThrownBy(() -> blankTokenClient.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupReturnsUnauthorized() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupReturnsForbidden() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN));
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupReturnsConflict() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andRespond(withStatus(HttpStatus.CONFLICT));
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupReturnsBadRequest() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST));
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupReturnsServerError() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupWrapperIsMalformed() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andRespond(withSuccess("{\"message\":\"ok\"}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupDataIsNull() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andRespond(withSuccess("{\"data\":null}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupIdIsMissing() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
                 .andRespond(withSuccess(
                         """
                         {
                           "data": {
-                            "items": [
-                              {"id": "%s", "personalId": "PID123"},
-                              {"id": "%s", "personalId": "PID123"}
-                            ],
-                            "page": 0,
-                            "size": 20,
-                            "totalItems": 2,
-                            "totalPages": 1
+                            "id": null,
+                            "personalId": "PID123"
                           }
                         }
-                        """.formatted(firstUserId, secondUserId),
+                        """,
                         MediaType.APPLICATION_JSON
                 ));
 
-        assertThatThrownBy(() -> client.findUserByPersonalId("PID123", "token"))
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupPersonalIdIsBlank() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "id": "%s",
+                            "personalId": "   "
+                          }
+                        }
+                        """.formatted(userId),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenInternalLookupTransportFails() {
+        server.expect(requestTo(BASE_URL + "/internal/users/by-personal-id/PID123"))
+                .andRespond(request -> {
+                    throw new ResourceAccessException("connection refused");
+                });
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> {
                     ApiException apiException = (ApiException) ex;

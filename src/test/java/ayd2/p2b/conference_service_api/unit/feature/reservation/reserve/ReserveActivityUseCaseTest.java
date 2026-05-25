@@ -74,7 +74,7 @@ class ReserveActivityUseCaseTest {
                 .reservedAt(savedReservation.getReservedAt())
                 .build();
 
-        when(reservationActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
+        when(reservationActivityPort.findActivityByIdForReservationUpdate(activityId)).thenReturn(Optional.of(activity));
         when(reservationEnrollmentPort.existsEnrollment(activity.getCongressId(), userId)).thenReturn(true);
         when(reservationRepositoryPort.existsByActivityIdAndUserId(activityId, userId)).thenReturn(false);
         when(reservationRepositoryPort.countByActivityId(activityId)).thenReturn(1L);
@@ -86,13 +86,15 @@ class ReserveActivityUseCaseTest {
         assertThat(result.getId()).isEqualTo(savedReservation.getId());
         assertThat(result.getActivityId()).isEqualTo(activityId);
         assertThat(result.getUserId()).isEqualTo(userId);
+        verify(reservationActivityPort).findActivityByIdForReservationUpdate(activityId);
+        verify(reservationActivityPort, never()).findActivityById(activityId);
     }
 
     @Test
     void shouldRejectReservationForPonenciaActivity() {
         UUID activityId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        when(reservationActivityPort.findActivityById(activityId))
+        when(reservationActivityPort.findActivityByIdForReservationUpdate(activityId))
                 .thenReturn(Optional.of(activitySummary(activityId, ActivityType.PONENCIA, null)));
 
         assertThatThrownBy(() -> useCase.execute(activityId, participantRequester(userId)))
@@ -111,7 +113,7 @@ class ReserveActivityUseCaseTest {
         UUID activityId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         ReservationActivitySummary activity = activitySummary(activityId, ActivityType.TALLER, 10);
-        when(reservationActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
+        when(reservationActivityPort.findActivityByIdForReservationUpdate(activityId)).thenReturn(Optional.of(activity));
         when(reservationEnrollmentPort.existsEnrollment(activity.getCongressId(), userId)).thenReturn(false);
 
         assertThatThrownBy(() -> useCase.execute(activityId, participantRequester(userId)))
@@ -128,7 +130,7 @@ class ReserveActivityUseCaseTest {
         UUID activityId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         ReservationActivitySummary activity = activitySummary(activityId, ActivityType.TALLER, 10);
-        when(reservationActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
+        when(reservationActivityPort.findActivityByIdForReservationUpdate(activityId)).thenReturn(Optional.of(activity));
         when(reservationEnrollmentPort.existsEnrollment(activity.getCongressId(), userId)).thenReturn(true);
         when(reservationRepositoryPort.existsByActivityIdAndUserId(activityId, userId)).thenReturn(true);
 
@@ -146,7 +148,7 @@ class ReserveActivityUseCaseTest {
         UUID activityId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         ReservationActivitySummary activity = activitySummary(activityId, ActivityType.TALLER, 2);
-        when(reservationActivityPort.findActivityById(activityId)).thenReturn(Optional.of(activity));
+        when(reservationActivityPort.findActivityByIdForReservationUpdate(activityId)).thenReturn(Optional.of(activity));
         when(reservationEnrollmentPort.existsEnrollment(activity.getCongressId(), userId)).thenReturn(true);
         when(reservationRepositoryPort.existsByActivityIdAndUserId(activityId, userId)).thenReturn(false);
         when(reservationRepositoryPort.countByActivityId(activityId)).thenReturn(2L);

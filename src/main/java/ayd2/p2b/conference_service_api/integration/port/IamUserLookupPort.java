@@ -16,5 +16,5 @@ public interface IamUserLookupPort {
 
     Map<UUID, IamUserSummary> getUsersSummary(Set<UUID> userIds, String accessToken);
 
-    Optional<IamPersonalIdUserSummary> findUserByPersonalId(String personalId, String accessToken);
+    Optional<IamPersonalIdUserSummary> findUserByPersonalId(String personalId);
 }

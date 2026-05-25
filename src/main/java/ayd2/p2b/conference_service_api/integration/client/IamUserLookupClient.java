@@ -1,11 +1,11 @@
 package ayd2.p2b.conference_service_api.integration.client;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
-import ayd2.p2b.conference_service_api.common.response.PageResponse;
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.integration.exception.IntegrationExceptions;
 import ayd2.p2b.conference_service_api.integration.dto.IamCommitteeCandidateSummary;
 import ayd2.p2b.conference_service_api.integration.dto.IamCommitteeEligibilityResponse;
+import ayd2.p2b.conference_service_api.integration.dto.IamInternalUserIdentityResponse;
 import ayd2.p2b.conference_service_api.integration.dto.IamPersonalIdUserSummary;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserResponse;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserSummary;
@@ -28,13 +28,18 @@ import java.util.Comparator;
 @Component
 public class IamUserLookupClient implements IamUserLookupPort {
 
+    private static final String SERVICE_TOKEN_HEADER = "X-Service-Token";
+
     private final RestClient restClient;
+    private final String serviceToken;
 
     public IamUserLookupClient(
             RestClient.Builder restClientBuilder,
-            @Value("${integration.iam.base-url:http://localhost:8081}") String iamBaseUrl
+            @Value("${integration.iam.base-url:http://localhost:8081}") String iamBaseUrl,
+            @Value("${integration.iam.service-token:}") String serviceToken
     ) {
         this.restClient = restClientBuilder.baseUrl(iamBaseUrl).build();
+        this.serviceToken = serviceToken;
     }
 
     @Override
@@ -162,41 +167,30 @@ public class IamUserLookupClient implements IamUserLookupPort {
     }
 
     @Override
-    public Optional<IamPersonalIdUserSummary> findUserByPersonalId(String personalId, String accessToken) {
+    public Optional<IamPersonalIdUserSummary> findUserByPersonalId(String personalId) {
         String normalizedPersonalId = normalizePersonalId(personalId);
-        if (accessToken == null || accessToken.isBlank()) {
-            throw IntegrationExceptions.iamUnavailable("Bearer token is required for IAM personalId lookup");
+        if (serviceToken == null || serviceToken.isBlank()) {
+            throw IntegrationExceptions.iamUnavailable("IAM service token is not configured");
         }
 
         try {
-            ApiResponse<PageResponse<IamUserResponse>> response = fetchUsersSearch(normalizedPersonalId, accessToken);
-            if (response == null || response.getData() == null || response.getData().getItems() == null) {
+            ApiResponse<IamInternalUserIdentityResponse> response = fetchUserByPersonalIdInternal(normalizedPersonalId);
+            if (response == null || response.getData() == null) {
                 throw IntegrationExceptions.iamUnavailable();
             }
-
-            var exactMatches = response.getData().getItems().stream()
-                    .filter(item -> item != null
-                            && item.getPersonalId() != null
-                            && item.getPersonalId().trim().equals(normalizedPersonalId))
-                    .toList();
-
-            if (exactMatches.isEmpty()) {
-                return Optional.empty();
-            }
-            if (exactMatches.size() > 1) {
-                throw IntegrationExceptions.iamUnavailable(
-                        "IAM returned multiple users for personalId " + normalizedPersonalId);
-            }
-
-            IamUserResponse match = exactMatches.getFirst();
-            if (match.getId() == null || match.getPersonalId() == null || match.getPersonalId().trim().isBlank()) {
+            IamInternalUserIdentityResponse data = response.getData();
+            if (data.getId() == null || data.getPersonalId() == null || data.getPersonalId().trim().isBlank()) {
                 throw IntegrationExceptions.iamUnavailable();
             }
             return Optional.of(IamPersonalIdUserSummary.builder()
-                    .userId(match.getId())
-                    .personalId(match.getPersonalId().trim())
+                    .userId(data.getId())
+                    .personalId(data.getPersonalId().trim())
                     .build());
         } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            if (status == 404) {
+                return Optional.empty();
+            }
             throw IntegrationExceptions.iamUnavailable();
         } catch (RestClientException ex) {
             throw IntegrationExceptions.iamUnavailable();
@@ -225,16 +219,10 @@ public class IamUserLookupClient implements IamUserLookupPort {
                 });
     }
 
-    private ApiResponse<PageResponse<IamUserResponse>> fetchUsersSearch(String personalId, String accessToken) {
+    private ApiResponse<IamInternalUserIdentityResponse> fetchUserByPersonalIdInternal(String personalId) {
         return restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/users")
-                        .queryParam("search", personalId)
-                        .queryParam("active", true)
-                        .queryParam("page", 0)
-                        .queryParam("size", 20)
-                        .build())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .uri("/internal/users/by-personal-id/{personalId}", personalId)
+                .header(SERVICE_TOKEN_HEADER, serviceToken)
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {
                 });

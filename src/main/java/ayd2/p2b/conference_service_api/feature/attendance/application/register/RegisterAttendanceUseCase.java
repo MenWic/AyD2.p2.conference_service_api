@@ -50,9 +50,7 @@ public class RegisterAttendanceUseCase {
         AttendanceAccessPolicy.ensureCongressAdminScoped(requester);
         String normalizedPersonalId = normalizePersonalId(request.getPersonalId());
 
-        IamPersonalIdUserSummary attendee = iamUserLookupPort.findUserByPersonalId(
-                        normalizedPersonalId,
-                        requester.getAccessToken())
+        IamPersonalIdUserSummary attendee = iamUserLookupPort.findUserByPersonalId(normalizedPersonalId)
                 .orElseThrow(() -> AttendanceExceptions.participantNotFoundByPersonalId(normalizedPersonalId));
 
         UUID userId = attendee.getUserId();

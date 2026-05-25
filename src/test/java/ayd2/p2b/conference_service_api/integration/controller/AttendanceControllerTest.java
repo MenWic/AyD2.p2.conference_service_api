@@ -123,6 +123,24 @@ class AttendanceControllerTest {
     }
 
     @Test
+    void shouldReturnForbiddenWhenRegisterRequesterIsNotScopedCongressAdmin() throws Exception {
+        when(registerAttendanceUseCase.execute(any(), any()))
+                .thenThrow(new ApiException(HttpStatus.FORBIDDEN, "auth.forbidden", "not scoped"));
+
+        mockMvc.perform(post("/attendance/register")
+                        .header("Authorization", "Bearer " + tokenWithRoles(UUID.randomUUID(), List.of("CONGRESS_ADMIN", "PARTICIPANT")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "activityId":"%s",
+                                  "personalId":"ABC12345"
+                                }
+                                """.formatted(UUID.randomUUID())))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("auth.forbidden"));
+    }
+
+    @Test
     void shouldReturnBadRequestForMalformedRegisterBody() throws Exception {
         mockMvc.perform(post("/attendance/register")
                         .header("Authorization", "Bearer " + tokenWithRoles(UUID.randomUUID(), List.of("CONGRESS_ADMIN", "PARTICIPANT")))

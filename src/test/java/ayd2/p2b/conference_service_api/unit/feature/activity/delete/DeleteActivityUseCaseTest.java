@@ -85,6 +85,24 @@ class DeleteActivityUseCaseTest {
     }
 
     @Test
+    void shouldBlockDeleteWhenAttendanceDependenciesExist() {
+        Activity current = activity();
+        UUID ownerId = current.getCreatedBy();
+        when(activityRepositoryPort.findById(current.getId())).thenReturn(Optional.of(current));
+        when(activityCongressRoomPort.findManageableCongressById(current.getCongressId()))
+                .thenReturn(Optional.of(summary(current.getCongressId(), ownerId)));
+        when(activityDependencyPort.findBlockingDependencies(current.getId())).thenReturn(List.of("attendances"));
+
+        assertThatThrownBy(() -> useCase.execute(current.getId(), requester(ownerId, Set.of(Role.CONGRESS_ADMIN))))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(apiException.getCode()).isEqualTo("resource.conflict");
+                });
+    }
+
+    @Test
     void shouldDeleteWhenNoDependencies() {
         Activity current = activity();
         UUID ownerId = current.getCreatedBy();

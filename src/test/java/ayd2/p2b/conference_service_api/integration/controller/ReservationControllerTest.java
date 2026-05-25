@@ -121,6 +121,19 @@ class ReservationControllerTest {
     }
 
     @Test
+    void shouldReturnForbiddenWhenActivityReservationsRequesterIsNotScoped() throws Exception {
+        UUID activityId = UUID.randomUUID();
+
+        when(listActivityReservationsUseCase.execute(eq(activityId), any(), any()))
+                .thenThrow(new ApiException(HttpStatus.FORBIDDEN, "auth.forbidden", "not scoped"));
+
+        mockMvc.perform(get("/activities/{id}/reservations", activityId)
+                        .header("Authorization", "Bearer " + tokenWithRoles(UUID.randomUUID(), List.of("CONGRESS_ADMIN", "PARTICIPANT"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("auth.forbidden"));
+    }
+
+    @Test
     void shouldListUserReservationsWithPageEnvelope() throws Exception {
         UUID userId = UUID.randomUUID();
         ReservationResponse item = reservationResponse(UUID.randomUUID(), userId);
@@ -138,6 +151,20 @@ class ReservationControllerTest {
                         .header("Authorization", "Bearer " + tokenWithRoles(userId, List.of("PARTICIPANT"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].userId").value(userId.toString()));
+    }
+
+    @Test
+    void shouldReturnForbiddenWhenListingUserReservationsForAnotherUser() throws Exception {
+        UUID requestedUserId = UUID.randomUUID();
+        UUID requesterUserId = UUID.randomUUID();
+
+        when(listUserReservationsUseCase.execute(eq(requestedUserId), any(), any()))
+                .thenThrow(new ApiException(HttpStatus.FORBIDDEN, "auth.forbidden", "self only"));
+
+        mockMvc.perform(get("/users/{id}/reservations", requestedUserId)
+                        .header("Authorization", "Bearer " + tokenWithRoles(requesterUserId, List.of("PARTICIPANT"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("auth.forbidden"));
     }
 
     @Test

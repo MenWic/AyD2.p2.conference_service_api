@@ -11,6 +11,7 @@ import ayd2.p2b.conference_service_api.feature.institution.infrastructure.persis
 import ayd2.p2b.conference_service_api.feature.institution.infrastructure.persistence.repository.InstitutionRepository;
 import ayd2.p2b.conference_service_api.feature.room.infrastructure.persistence.entity.RoomEntity;
 import ayd2.p2b.conference_service_api.feature.room.infrastructure.persistence.repository.RoomRepository;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -58,6 +59,8 @@ class AttendancePersistenceTest {
     private CongressRepository congressRepository;
     @Autowired
     private InstitutionRepository institutionRepository;
+    @Autowired
+    private EntityManager entityManager;
 
     @Test
     void shouldEnforceUniqueAttendanceByActivityAndUser() {
@@ -81,6 +84,41 @@ class AttendancePersistenceTest {
                 .isEqualTo("PID321");
         assertThat(saved.getRegisteredBy()).isNotNull();
         assertThat(saved.getRegisteredAt()).isNotNull();
+    }
+
+    @Test
+    void shouldKeepImmutableColumnsUnchangedOnUpdateAttempt() {
+        ActivityEntity activity = persistedActivity();
+        UUID userId = UUID.randomUUID();
+        AttendanceEntity saved = attendanceRepository.saveAndFlush(newAttendance(activity.getId(), userId, "PID-IMM-1"));
+
+        UUID originalActivityId = saved.getActivityId();
+        UUID originalUserId = saved.getUserId();
+        String originalPersonalId = saved.getPersonalIdSnapshot();
+        UUID originalRegisteredBy = saved.getRegisteredBy();
+        OffsetDateTime originalRegisteredAt = saved.getRegisteredAt();
+        UUID originalCreatedBy = saved.getCreatedBy();
+        OffsetDateTime originalCreatedAt = saved.getCreatedAt();
+
+        saved.setActivityId(UUID.randomUUID());
+        saved.setUserId(UUID.randomUUID());
+        saved.setPersonalIdSnapshot("PID-IMM-2");
+        saved.setRegisteredBy(UUID.randomUUID());
+        saved.setRegisteredAt(originalRegisteredAt.plusHours(1));
+        saved.setCreatedBy(UUID.randomUUID());
+        saved.setCreatedAt(originalCreatedAt.plusHours(1));
+        attendanceRepository.saveAndFlush(saved);
+
+        entityManager.clear();
+        AttendanceEntity reloaded = attendanceRepository.findById(saved.getId()).orElseThrow();
+
+        assertThat(reloaded.getActivityId()).isEqualTo(originalActivityId);
+        assertThat(reloaded.getUserId()).isEqualTo(originalUserId);
+        assertThat(reloaded.getPersonalIdSnapshot()).isEqualTo(originalPersonalId);
+        assertThat(reloaded.getRegisteredBy()).isEqualTo(originalRegisteredBy);
+        assertThat(reloaded.getRegisteredAt()).isEqualTo(originalRegisteredAt);
+        assertThat(reloaded.getCreatedBy()).isEqualTo(originalCreatedBy);
+        assertThat(reloaded.getCreatedAt()).isEqualTo(originalCreatedAt);
     }
 
     private ActivityEntity persistedActivity() {
