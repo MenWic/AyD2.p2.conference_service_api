@@ -38,7 +38,7 @@ public class JpaAttendanceByActivityQuery implements AttendanceByActivityQueryPo
             jpql.append(" and a.startTime >= :dateFrom");
         }
         if (dateTo != null) {
-            jpql.append(" and a.startTime <= :dateTo");
+            jpql.append(" and a.startTime < :dateTo");
         }
 
         jpql.append("""

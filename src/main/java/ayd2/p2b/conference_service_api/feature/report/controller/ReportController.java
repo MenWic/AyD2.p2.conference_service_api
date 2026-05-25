@@ -43,6 +43,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Set;
 import java.util.UUID;
 
@@ -101,16 +102,23 @@ public class ReportController {
             @RequestParam UUID congressId,
             @RequestParam(required = false) UUID activityId,
             @RequestParam(required = false) UUID roomId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateTo,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String format,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             Authentication authentication) {
 
+        if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
+            throw ReportExceptions.invalidDateRange(dateFrom, dateTo);
+        }
+
+        OffsetDateTime from = dateFrom == null ? null : dateFrom.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime toExclusive = dateTo == null ? null : dateTo.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+
         ReportFormat fmt = ReportFormat.parse(format);
         ReportRequesterContext requester = buildRequesterContext(authentication, authorization);
         AttendanceByActivityReportResponse response = attendanceByActivityReportUseCase.execute(
-                congressId, activityId, roomId, dateFrom, dateTo, requester);
+                congressId, activityId, roomId, from, toExclusive, requester);
 
         if (fmt == ReportFormat.HTML) {
             ReportTableModel table = reportTableModelFactory.attendanceByActivity(response);
