@@ -191,7 +191,7 @@ class ReportQueryIntegrationTest {
     @Test
     void attendance_query_filters_by_date_range_on_start_time() {
         OffsetDateTime from = OffsetDateTime.of(2026, 6, 1, 10, 0, 0, 0, ZoneOffset.UTC);
-        OffsetDateTime to = OffsetDateTime.of(2026, 6, 1, 11, 0, 0, 0, ZoneOffset.UTC);
+        OffsetDateTime to = OffsetDateTime.of(2026, 6, 1, 10, 59, 59, 0, ZoneOffset.UTC);
 
         List<AttendanceActivityItem> byFrom = attendanceQuery.query(congressId, null, null, from, null);
         List<AttendanceActivityItem> byTo = attendanceQuery.query(congressId, null, null, null, to);
