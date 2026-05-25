@@ -1,9 +1,11 @@
 package ayd2.p2b.conference_service_api.common.exception;
 
 import ayd2.p2b.conference_service_api.feature.activity.domain.exception.ActivityDomainException;
+import ayd2.p2b.conference_service_api.feature.attendance.domain.exception.AttendanceDomainException;
 import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressDomainException;
 import ayd2.p2b.conference_service_api.feature.enrollment.domain.exception.EnrollmentDomainException;
 import ayd2.p2b.conference_service_api.feature.proposal.domain.exception.ProposalDomainException;
+import ayd2.p2b.conference_service_api.feature.reservation.domain.exception.ReservationDomainException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.validation.ConstraintViolationException;
@@ -97,6 +99,24 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(EnrollmentDomainException.class)
     public ProblemDetail handleEnrollmentDomainException(EnrollmentDomainException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                ex.getMessage());
+        detail.setProperty("code", "domain.invariant_violated");
+        return detail;
+    }
+
+    @ExceptionHandler(ReservationDomainException.class)
+    public ProblemDetail handleReservationDomainException(ReservationDomainException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                ex.getMessage());
+        detail.setProperty("code", "domain.invariant_violated");
+        return detail;
+    }
+
+    @ExceptionHandler(AttendanceDomainException.class)
+    public ProblemDetail handleAttendanceDomainException(AttendanceDomainException ex) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(
                 HttpStatus.UNPROCESSABLE_ENTITY,
                 ex.getMessage());

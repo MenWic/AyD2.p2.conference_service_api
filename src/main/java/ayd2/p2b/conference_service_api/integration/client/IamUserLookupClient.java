@@ -1,10 +1,12 @@
 package ayd2.p2b.conference_service_api.integration.client;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
+import ayd2.p2b.conference_service_api.common.response.PageResponse;
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.integration.exception.IntegrationExceptions;
 import ayd2.p2b.conference_service_api.integration.dto.IamCommitteeCandidateSummary;
 import ayd2.p2b.conference_service_api.integration.dto.IamCommitteeEligibilityResponse;
+import ayd2.p2b.conference_service_api.integration.dto.IamPersonalIdUserSummary;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserResponse;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserSummary;
 import ayd2.p2b.conference_service_api.integration.port.IamUserLookupPort;
@@ -18,6 +20,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.Comparator;
@@ -138,6 +141,7 @@ public class IamUserLookupClient implements IamUserLookupPort {
                         .email(data.getEmail())
                         .active(Boolean.TRUE.equals(data.getActive()))
                         .roles(data.getRoles() == null ? Set.of() : Set.copyOf(data.getRoles()))
+                        .linkedInstitutions(data.getLinkedInstitutions() == null ? Set.of() : Set.copyOf(data.getLinkedInstitutions()))
                         .build());
             } catch (RestClientResponseException ex) {
                 int status = ex.getStatusCode().value();
@@ -155,6 +159,52 @@ public class IamUserLookupClient implements IamUserLookupPort {
         }
 
         return summaries;
+    }
+
+    @Override
+    public Optional<IamPersonalIdUserSummary> findUserByPersonalId(String personalId, String accessToken) {
+        String normalizedPersonalId = normalizePersonalId(personalId);
+        if (accessToken == null || accessToken.isBlank()) {
+            throw IntegrationExceptions.iamUnavailable("Bearer token is required for IAM personalId lookup");
+        }
+
+        try {
+            ApiResponse<PageResponse<IamUserResponse>> response = fetchUsersSearch(normalizedPersonalId, accessToken);
+            if (response == null || response.getData() == null || response.getData().getItems() == null) {
+                throw IntegrationExceptions.iamUnavailable();
+            }
+
+            var exactMatches = response.getData().getItems().stream()
+                    .filter(item -> item != null
+                            && item.getPersonalId() != null
+                            && item.getPersonalId().trim().equals(normalizedPersonalId))
+                    .toList();
+
+            if (exactMatches.isEmpty()) {
+                return Optional.empty();
+            }
+            if (exactMatches.size() > 1) {
+                throw IntegrationExceptions.iamUnavailable(
+                        "IAM returned multiple users for personalId " + normalizedPersonalId);
+            }
+
+            IamUserResponse match = exactMatches.getFirst();
+            if (match.getId() == null || match.getPersonalId() == null || match.getPersonalId().trim().isBlank()) {
+                throw IntegrationExceptions.iamUnavailable();
+            }
+            return Optional.of(IamPersonalIdUserSummary.builder()
+                    .userId(match.getId())
+                    .personalId(match.getPersonalId().trim())
+                    .build());
+        } catch (RestClientResponseException ex) {
+            throw IntegrationExceptions.iamUnavailable();
+        } catch (RestClientException ex) {
+            throw IntegrationExceptions.iamUnavailable();
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw IntegrationExceptions.iamUnavailable();
+        }
     }
 
     private ApiResponse<IamUserResponse> fetchUserById(UUID userId, String accessToken) {
@@ -175,10 +225,32 @@ public class IamUserLookupClient implements IamUserLookupPort {
                 });
     }
 
+    private ApiResponse<PageResponse<IamUserResponse>> fetchUsersSearch(String personalId, String accessToken) {
+        return restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/users")
+                        .queryParam("search", personalId)
+                        .queryParam("active", true)
+                        .queryParam("page", 0)
+                        .queryParam("size", 20)
+                        .build())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .retrieve()
+                .body(new ParameterizedTypeReference<>() {
+                });
+    }
+
     private IamUserResponse extractUserDataOrThrow(ApiResponse<IamUserResponse> response) {
         if (response == null || response.getData() == null || response.getData().getId() == null) {
             throw IntegrationExceptions.iamUnavailable();
         }
         return response.getData();
+    }
+
+    private String normalizePersonalId(String personalId) {
+        if (personalId == null || personalId.trim().isBlank()) {
+            throw IntegrationExceptions.iamUnavailable("personalId is required for IAM lookup");
+        }
+        return personalId.trim();
     }
 }

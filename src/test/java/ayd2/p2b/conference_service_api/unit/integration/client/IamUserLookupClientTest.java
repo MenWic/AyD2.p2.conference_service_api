@@ -18,6 +18,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -403,6 +404,105 @@ class IamUserLookupClientTest {
                 .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
 
         assertThatThrownBy(() -> client.getCommitteeCandidateSummary(userId, "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void shouldReturnUserByPersonalIdWhenExactMatchExists() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(containsString(BASE_URL + "/users?search=PID123")))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer token"))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "items": [
+                              {
+                                "id": "%s",
+                                "personalId": "PID123"
+                              }
+                            ],
+                            "page": 0,
+                            "size": 20,
+                            "totalItems": 1,
+                            "totalPages": 1
+                          }
+                        }
+                        """.formatted(userId),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        var summary = client.findUserByPersonalId("PID123", "token");
+
+        assertThat(summary).isPresent();
+        assertThat(summary.get().getUserId()).isEqualTo(userId);
+        assertThat(summary.get().getPersonalId()).isEqualTo("PID123");
+        server.verify();
+    }
+
+    @Test
+    void shouldReturnEmptyWhenPersonalIdDoesNotMatchExactly() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(containsString(BASE_URL + "/users?search=PID123")))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "items": [
+                              {
+                                "id": "%s",
+                                "personalId": "PID123X"
+                              }
+                            ],
+                            "page": 0,
+                            "size": 20,
+                            "totalItems": 1,
+                            "totalPages": 1
+                          }
+                        }
+                        """.formatted(userId),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        var summary = client.findUserByPersonalId("PID123", "token");
+
+        assertThat(summary).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void shouldThrowIamUnavailableWhenMultipleExactPersonalIdMatchesExist() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+
+        server.expect(requestTo(containsString(BASE_URL + "/users?search=PID123")))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "items": [
+                              {"id": "%s", "personalId": "PID123"},
+                              {"id": "%s", "personalId": "PID123"}
+                            ],
+                            "page": 0,
+                            "size": 20,
+                            "totalItems": 2,
+                            "totalPages": 1
+                          }
+                        }
+                        """.formatted(firstUserId, secondUserId),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        assertThatThrownBy(() -> client.findUserByPersonalId("PID123", "token"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> {
                     ApiException apiException = (ApiException) ex;
