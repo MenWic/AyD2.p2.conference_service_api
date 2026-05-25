@@ -96,6 +96,9 @@ public final class OpenApiExamples {
     public static final String DIPLOMA_PRINT_DATA_SUCCESS = """
             {"data":{"diplomaId":"d65a773a-d57e-41e8-8782-02f2f5aaf0a2","userId":"18d7f0d1-20cf-47b0-a3eb-d8a292e3f3d8","userFullName":"Ana Maria Lopez","congressId":"9470bdea-8e37-4d0e-b2ae-545211ec4498","congressName":"Congreso Nacional de Ingenieria","activityId":null,"activityName":null,"type":"PARTICIPATION","issuedAt":"2026-10-10T10:00:00Z"}}
             """;
+    public static final String WORKSHOP_RESERVATIONS_REPORT_SUCCESS = """
+            {"data":{"items":[{"activityId":"3a6d8f8e-a077-4a66-a7d3-c8dd90666fc2","activityName":"Taller de Cloud Native","workshopCapacity":30,"reservationCount":2,"availableSeats":28,"roster":[{"personalId":"A1234567","fullName":"Ana Maria Lopez","email":"ana.lopez@example.com","participationType":"SPEAKER"},{"personalId":"B7654321","fullName":"Luis Perez","email":"luis.perez@example.com","participationType":"ENROLLED"}]}],"totalItems":1}}
+            """;
     public static final String PAGE_RESPONSE_SUCCESS = """
             {"data":{"items":[],"page":0,"size":20,"totalItems":0,"totalPages":0}}
             """;

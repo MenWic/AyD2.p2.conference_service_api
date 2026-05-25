@@ -1,52 +1,76 @@
 package ayd2.p2b.conference_service_api.feature.report.infrastructure.persistence.query;
 
-import ayd2.p2b.conference_service_api.feature.attendance.infrastructure.persistence.repository.AttendanceJpaRepository;
-import ayd2.p2b.conference_service_api.feature.activity.infrastructure.persistence.repository.ActivityRepository;
-import ayd2.p2b.conference_service_api.feature.room.infrastructure.persistence.repository.RoomRepository;
 import ayd2.p2b.conference_service_api.feature.report.application.attendance_summary.port.AttendanceByActivityQueryPort;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceActivityItem;
-import lombok.RequiredArgsConstructor;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.TypedQuery;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 @Component
-@RequiredArgsConstructor
 public class JpaAttendanceByActivityQuery implements AttendanceByActivityQueryPort {
 
-    private final ActivityRepository activityRepository;
-    private final RoomRepository roomRepository;
-    private final AttendanceJpaRepository attendanceRepository;
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Override
     public List<AttendanceActivityItem> query(UUID congressId, UUID activityIdFilter, UUID roomIdFilter,
-                                               OffsetDateTime dateFrom, OffsetDateTime dateTo) {
-        List<AttendanceActivityItem> result = new ArrayList<>();
+                                              OffsetDateTime dateFrom, OffsetDateTime dateTo) {
+        StringBuilder jpql = new StringBuilder("""
+                select a.id, a.name, r.name, a.startTime, a.endTime, count(att.id)
+                from ActivityEntity a
+                join a.room r
+                left join AttendanceEntity att on att.activityId = a.id
+                where a.congressId = :congressId
+                """);
 
-        activityRepository.findAll().stream()
-                .filter(a -> congressId.equals(a.getCongressId()))
-                .filter(a -> activityIdFilter == null || activityIdFilter.equals(a.getId()))
-                .filter(a -> roomIdFilter == null || roomIdFilter.equals(a.getRoomId()))
-                .filter(a -> dateFrom == null || !a.getStartTime().isBefore(dateFrom))
-                .filter(a -> dateTo == null || !a.getStartTime().isAfter(dateTo))
-                .forEach(activity -> {
-                    String roomName = roomRepository.findById(activity.getRoomId())
-                            .map(r -> r.getName())
-                            .orElse("");
-                    long count = attendanceRepository.countByActivityId(activity.getId());
-                    result.add(AttendanceActivityItem.builder()
-                            .activityId(activity.getId())
-                            .activityName(activity.getName())
-                            .roomName(roomName)
-                            .startTime(activity.getStartTime())
-                            .endTime(activity.getEndTime())
-                            .attendanceCount(count)
-                            .build());
-                });
+        if (activityIdFilter != null) {
+            jpql.append(" and a.id = :activityId");
+        }
+        if (roomIdFilter != null) {
+            jpql.append(" and a.roomId = :roomId");
+        }
+        if (dateFrom != null) {
+            jpql.append(" and a.startTime >= :dateFrom");
+        }
+        if (dateTo != null) {
+            jpql.append(" and a.startTime <= :dateTo");
+        }
 
-        return result;
+        jpql.append("""
+                 group by a.id, a.name, r.name, a.startTime, a.endTime
+                 order by a.startTime asc, a.name asc
+                """);
+
+        TypedQuery<Object[]> query = entityManager.createQuery(jpql.toString(), Object[].class)
+                .setParameter("congressId", congressId);
+
+        if (activityIdFilter != null) {
+            query.setParameter("activityId", activityIdFilter);
+        }
+        if (roomIdFilter != null) {
+            query.setParameter("roomId", roomIdFilter);
+        }
+        if (dateFrom != null) {
+            query.setParameter("dateFrom", dateFrom);
+        }
+        if (dateTo != null) {
+            query.setParameter("dateTo", dateTo);
+        }
+
+        return query.getResultList().stream()
+                .map(row -> AttendanceActivityItem.builder()
+                        .activityId((UUID) row[0])
+                        .activityName((String) row[1])
+                        .roomName((String) row[2])
+                        .startTime((OffsetDateTime) row[3])
+                        .endTime((OffsetDateTime) row[4])
+                        .attendanceCount((Long) row[5])
+                        .build())
+                .toList();
     }
 }

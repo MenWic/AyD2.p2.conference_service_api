@@ -224,6 +224,7 @@ public class IamUserLookupClient implements IamUserLookupPort {
                         .id(data.getId())
                         .fullName(data.getFullName())
                         .email(data.getEmail())
+                        .personalId(data.getPersonalId())
                         .active(Boolean.TRUE.equals(data.getActive()))
                         .roles(data.getRoles() == null ? Set.of() : Set.copyOf(data.getRoles()))
                         .build());

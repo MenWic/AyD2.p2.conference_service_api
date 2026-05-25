@@ -663,6 +663,7 @@ class IamUserLookupClientTest {
                             "id": "%s",
                             "fullName": "Maria Garcia",
                             "email": "maria@usac.edu",
+                            "personalId": "PID-778899",
                             "active": true,
                             "roles": ["PARTICIPANT"],
                             "linkedInstitutions": []
@@ -677,6 +678,7 @@ class IamUserLookupClientTest {
         assertThat(result).containsKey(userId);
         assertThat(result.get(userId).getFullName()).isEqualTo("Maria Garcia");
         assertThat(result.get(userId).getEmail()).isEqualTo("maria@usac.edu");
+        assertThat(result.get(userId).getPersonalId()).isEqualTo("PID-778899");
         assertThat(result.get(userId).isActive()).isTrue();
         server.verify();
     }

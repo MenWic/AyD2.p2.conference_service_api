@@ -236,6 +236,24 @@ class ParticipantsReportQueryTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    void leaders_from_other_congress_are_excluded() {
+        UUID speakerInTargetCongress = UUID.randomUUID();
+        UUID speakerInOtherCongress = UUID.randomUUID();
+
+        persistActivityLeader(activityId, speakerInTargetCongress, ActivityLeaderType.SPEAKER);
+
+        UUID otherCongressId = createAdditionalCongress();
+        UUID otherRoomId = createRoom(otherCongressId, "Other Room");
+        UUID otherActivityId = createActivity(otherCongressId, otherRoomId, "Other Talk", ActivityType.PONENCIA, null);
+        persistActivityLeader(otherActivityId, speakerInOtherCongress, ActivityLeaderType.SPEAKER);
+
+        List<ParticipantRow> result = query.findParticipants(congressId);
+
+        assertThat(result).extracting(ParticipantRow::getUserId).contains(speakerInTargetCongress);
+        assertThat(result).extracting(ParticipantRow::getUserId).doesNotContain(speakerInOtherCongress);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private UUID createAdditionalCongress() {
@@ -258,6 +276,37 @@ class ParticipantsReportQueryTest {
         other.setCreatedBy(UUID.randomUUID());
         other = congressRepository.saveAndFlush(other);
         return other.getId();
+    }
+
+    private UUID createRoom(UUID targetCongressId, String name) {
+        RoomEntity room = new RoomEntity();
+        room.setCongressId(targetCongressId);
+        room.setName(name);
+        room.setCreatedBy(UUID.randomUUID());
+        room = roomRepository.saveAndFlush(room);
+        return room.getId();
+    }
+
+    private UUID createActivity(
+            UUID targetCongressId,
+            UUID roomId,
+            String name,
+            ActivityType type,
+            Integer workshopCapacity
+    ) {
+        OffsetDateTime start = OffsetDateTime.of(2026, 6, 2, 9, 0, 0, 0, ZoneOffset.UTC);
+        ActivityEntity activity = new ActivityEntity();
+        activity.setCongressId(targetCongressId);
+        activity.setRoomId(roomId);
+        activity.setName(name);
+        activity.setDescription("Description");
+        activity.setType(type);
+        activity.setStartTime(start);
+        activity.setEndTime(start.plusHours(1));
+        activity.setWorkshopCapacity(workshopCapacity);
+        activity.setCreatedBy(UUID.randomUUID());
+        activity = activityRepository.saveAndFlush(activity);
+        return activity.getId();
     }
 
     private void persistEnrollment(UUID userId, UUID targetCongressId) {

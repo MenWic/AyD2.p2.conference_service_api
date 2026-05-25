@@ -9,15 +9,15 @@ import ayd2.p2b.conference_service_api.feature.congress.infrastructure.persisten
 import ayd2.p2b.conference_service_api.feature.congress.infrastructure.persistence.repository.CongressRepository;
 import ayd2.p2b.conference_service_api.feature.institution.infrastructure.persistence.entity.InstitutionEntity;
 import ayd2.p2b.conference_service_api.feature.institution.infrastructure.persistence.repository.InstitutionRepository;
+import ayd2.p2b.conference_service_api.feature.report.dto.internal.WorkshopReservationRow;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceActivityItem;
+import ayd2.p2b.conference_service_api.feature.report.infrastructure.persistence.adapter.JpaParticipantsCongressScopeAdapter;
+import ayd2.p2b.conference_service_api.feature.report.infrastructure.persistence.query.JpaAttendanceByActivityQuery;
+import ayd2.p2b.conference_service_api.feature.report.infrastructure.persistence.query.JpaWorkshopReservationsQuery;
 import ayd2.p2b.conference_service_api.feature.reservation.infrastructure.persistence.entity.ReservationEntity;
 import ayd2.p2b.conference_service_api.feature.reservation.infrastructure.persistence.repository.ReservationJpaRepository;
 import ayd2.p2b.conference_service_api.feature.room.infrastructure.persistence.entity.RoomEntity;
 import ayd2.p2b.conference_service_api.feature.room.infrastructure.persistence.repository.RoomRepository;
-import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceActivityItem;
-import ayd2.p2b.conference_service_api.feature.report.dto.response.WorkshopReservationItem;
-import ayd2.p2b.conference_service_api.feature.report.infrastructure.persistence.adapter.JpaParticipantsCongressScopeAdapter;
-import ayd2.p2b.conference_service_api.feature.report.infrastructure.persistence.query.JpaAttendanceByActivityQuery;
-import ayd2.p2b.conference_service_api.feature.report.infrastructure.persistence.query.JpaWorkshopReservationsQuery;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -82,8 +82,10 @@ class ReportQueryIntegrationTest {
     private ReservationJpaRepository reservationRepository;
 
     private UUID congressId;
+    private UUID otherCongressId;
     private UUID activityPonenciaId;
     private UUID activityTallerId;
+    private UUID otherCongressTallerId;
     private UUID roomId;
 
     @BeforeEach
@@ -144,58 +146,66 @@ class ReportQueryIntegrationTest {
         taller.setCreatedBy(adminId);
         taller = activityRepository.saveAndFlush(taller);
         activityTallerId = taller.getId();
+
+        otherCongressId = createOtherCongress();
+        UUID otherRoom = createRoom(otherCongressId, "Other room");
+        otherCongressTallerId = createActivity(otherCongressId, otherRoom, "Other Workshop", ActivityType.TALLER, 10, start.plusDays(1));
     }
 
-    // ── JpaAttendanceByActivityQuery ─────────────────────────────────────────
-
     @Test
-    void attendance_query_no_filters_returns_all_activities_for_congress() {
+    void attendance_query_no_filters_returns_all_congress_activities_in_deterministic_order() {
         List<AttendanceActivityItem> result = attendanceQuery.query(congressId, null, null, null, null);
 
         assertThat(result).hasSize(2);
         assertThat(result).extracting(AttendanceActivityItem::getActivityName)
-                .containsExactlyInAnyOrder("Keynote", "Java Workshop");
+                .containsExactly("Keynote", "Java Workshop");
     }
 
     @Test
-    void attendance_query_filters_by_activity_id() {
-        List<AttendanceActivityItem> result = attendanceQuery.query(congressId, activityPonenciaId, null, null, null);
+    void attendance_query_includes_zero_attendance_activities() {
+        List<AttendanceActivityItem> result = attendanceQuery.query(congressId, null, null, null, null);
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getActivityName()).isEqualTo("Keynote");
+        assertThat(result).extracting(AttendanceActivityItem::getAttendanceCount)
+                .containsExactly(0L, 0L);
     }
 
     @Test
-    void attendance_query_filters_by_room_id() {
+    void attendance_query_filters_by_activity_id_scoped_to_congress() {
+        List<AttendanceActivityItem> sameCongress = attendanceQuery.query(congressId, activityPonenciaId, null, null, null);
+        List<AttendanceActivityItem> otherCongressActivity = attendanceQuery.query(congressId, otherCongressTallerId, null, null, null);
+
+        assertThat(sameCongress).hasSize(1);
+        assertThat(sameCongress.get(0).getActivityName()).isEqualTo("Keynote");
+        assertThat(otherCongressActivity).isEmpty();
+    }
+
+    @Test
+    void attendance_query_filters_by_room_id_scoped_to_congress() {
         List<AttendanceActivityItem> result = attendanceQuery.query(congressId, null, roomId, null, null);
 
         assertThat(result).hasSize(2);
+        assertThat(result).extracting(AttendanceActivityItem::getActivityName)
+                .containsExactly("Keynote", "Java Workshop");
     }
 
     @Test
-    void attendance_query_filters_by_date_from() {
-        OffsetDateTime dateFrom = OffsetDateTime.of(2026, 6, 1, 10, 0, 0, 0, ZoneOffset.UTC);
-        List<AttendanceActivityItem> result = attendanceQuery.query(congressId, null, null, dateFrom, null);
+    void attendance_query_filters_by_date_range_on_start_time() {
+        OffsetDateTime from = OffsetDateTime.of(2026, 6, 1, 10, 0, 0, 0, ZoneOffset.UTC);
+        OffsetDateTime to = OffsetDateTime.of(2026, 6, 1, 11, 0, 0, 0, ZoneOffset.UTC);
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getActivityName()).isEqualTo("Java Workshop");
-    }
+        List<AttendanceActivityItem> byFrom = attendanceQuery.query(congressId, null, null, from, null);
+        List<AttendanceActivityItem> byTo = attendanceQuery.query(congressId, null, null, null, to);
 
-    @Test
-    void attendance_query_filters_by_date_to() {
-        OffsetDateTime dateTo = OffsetDateTime.of(2026, 6, 1, 10, 0, 0, 0, ZoneOffset.UTC);
-        List<AttendanceActivityItem> result = attendanceQuery.query(congressId, null, null, null, dateTo);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getActivityName()).isEqualTo("Keynote");
+        assertThat(byFrom).hasSize(1);
+        assertThat(byFrom.get(0).getActivityName()).isEqualTo("Java Workshop");
+        assertThat(byTo).hasSize(1);
+        assertThat(byTo.get(0).getActivityName()).isEqualTo("Keynote");
     }
 
     @Test
     void attendance_query_counts_attendances_correctly() {
-        UUID user1 = UUID.randomUUID();
-        UUID user2 = UUID.randomUUID();
-        persistAttendance(activityPonenciaId, user1, "ID001");
-        persistAttendance(activityPonenciaId, user2, "ID002");
+        persistAttendance(activityPonenciaId, UUID.randomUUID(), "ID001");
+        persistAttendance(activityPonenciaId, UUID.randomUUID(), "ID002");
 
         List<AttendanceActivityItem> result = attendanceQuery.query(congressId, activityPonenciaId, null, null, null);
 
@@ -204,92 +214,54 @@ class ReportQueryIntegrationTest {
     }
 
     @Test
-    void attendance_query_returns_room_name() {
-        List<AttendanceActivityItem> result = attendanceQuery.query(congressId, activityPonenciaId, null, null, null);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getRoomName()).isEqualTo("Main Hall");
-    }
-
-    @Test
-    void attendance_query_different_congress_returns_empty() {
-        UUID otherCongressId = UUID.randomUUID();
-        List<AttendanceActivityItem> result = attendanceQuery.query(otherCongressId, null, null, null, null);
-
-        assertThat(result).isEmpty();
-    }
-
-    // ── JpaWorkshopReservationsQuery ─────────────────────────────────────────
-
-    @Test
     void workshop_query_returns_only_taller_activities() {
-        List<WorkshopReservationItem> result = workshopQuery.query(congressId, null);
+        List<WorkshopReservationRow> result = workshopQuery.query(congressId, null);
 
         assertThat(result).hasSize(1);
+        assertThat(result.get(0).getActivityId()).isEqualTo(activityTallerId);
         assertThat(result.get(0).getActivityName()).isEqualTo("Java Workshop");
     }
 
     @Test
-    void workshop_query_filters_by_activity_id() {
-        List<WorkshopReservationItem> result = workshopQuery.query(congressId, activityTallerId);
+    void workshop_query_filters_by_activity_id_scoped_to_congress() {
+        List<WorkshopReservationRow> sameCongress = workshopQuery.query(congressId, activityTallerId);
+        List<WorkshopReservationRow> otherCongress = workshopQuery.query(congressId, otherCongressTallerId);
+        List<WorkshopReservationRow> ponencia = workshopQuery.query(congressId, activityPonenciaId);
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getActivityId()).isEqualTo(activityTallerId);
+        assertThat(sameCongress).hasSize(1);
+        assertThat(sameCongress.get(0).getActivityId()).isEqualTo(activityTallerId);
+        assertThat(otherCongress).isEmpty();
+        assertThat(ponencia).isEmpty();
     }
 
     @Test
-    void workshop_query_activity_id_filter_for_ponencia_returns_empty() {
-        List<WorkshopReservationItem> result = workshopQuery.query(congressId, activityPonenciaId);
-
-        assertThat(result).isEmpty();
-    }
-
-    @Test
-    void workshop_query_counts_reservations_and_available_seats() {
+    void workshop_query_returns_reserved_user_ids_without_fallback_personal_id_logic() {
         UUID user1 = UUID.randomUUID();
         UUID user2 = UUID.randomUUID();
         persistReservation(activityTallerId, user1);
         persistReservation(activityTallerId, user2);
 
-        List<WorkshopReservationItem> result = workshopQuery.query(congressId, activityTallerId);
+        List<WorkshopReservationRow> result = workshopQuery.query(congressId, activityTallerId);
 
         assertThat(result).hasSize(1);
-        WorkshopReservationItem item = result.get(0);
-        assertThat(item.getWorkshopCapacity()).isEqualTo(30);
-        assertThat(item.getReservationCount()).isEqualTo(2);
-        assertThat(item.getAvailableSeats()).isEqualTo(28);
+        assertThat(result.get(0).getReservedUserIds()).containsExactlyInAnyOrder(user1, user2);
     }
 
     @Test
-    void workshop_query_available_seats_never_negative() {
-        for (int i = 0; i < 35; i++) {
-            persistReservation(activityTallerId, UUID.randomUUID());
-        }
+    void workshop_query_includes_workshop_without_reservations() {
+        List<WorkshopReservationRow> result = workshopQuery.query(congressId, activityTallerId);
 
-        List<WorkshopReservationItem> result = workshopQuery.query(congressId, activityTallerId);
-
-        assertThat(result.get(0).getAvailableSeats()).isEqualTo(0);
-    }
-
-    @Test
-    void workshop_query_roster_contains_reserved_user_ids() {
-        UUID userId = UUID.randomUUID();
-        persistReservation(activityTallerId, userId);
-
-        List<WorkshopReservationItem> result = workshopQuery.query(congressId, activityTallerId);
-
-        assertThat(result.get(0).getRoster()).hasSize(1);
-        assertThat(result.get(0).getRoster().get(0).getPersonalId()).isEqualTo(userId.toString());
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getReservedUserIds()).isEmpty();
+        assertThat(result.get(0).getWorkshopCapacity()).isEqualTo(30);
     }
 
     @Test
     void workshop_query_different_congress_returns_empty() {
-        List<WorkshopReservationItem> result = workshopQuery.query(UUID.randomUUID(), null);
+        List<WorkshopReservationRow> result = workshopQuery.query(UUID.randomUUID(), null);
 
         assertThat(result).isEmpty();
     }
-
-    // ── JpaParticipantsCongressScopeAdapter ──────────────────────────────────
 
     @Test
     void congress_scope_adapter_returns_summary_for_existing_congress() {
@@ -298,43 +270,82 @@ class ReportQueryIntegrationTest {
         assertThat(summary).isPresent();
         assertThat(summary.get().getCongressId()).isEqualTo(congressId);
         assertThat(summary.get().getCongressName()).isEqualTo("Test Congress");
+        assertThat(summary.get().getInstitutionId()).isNotNull();
     }
 
     @Test
     void congress_scope_adapter_returns_empty_for_unknown_congress() {
-        var summary = congressScopeAdapter.findCongressSummary(UUID.randomUUID());
-
-        assertThat(summary).isEmpty();
+        assertThat(congressScopeAdapter.findCongressSummary(UUID.randomUUID())).isEmpty();
     }
 
-    @Test
-    void congress_scope_adapter_includes_institution_id() {
-        var summary = congressScopeAdapter.findCongressSummary(congressId);
+    private UUID createOtherCongress() {
+        InstitutionEntity inst = new InstitutionEntity();
+        inst.setName("Other Institution " + UUID.randomUUID());
+        inst.setDescription("Description");
+        inst.setContactEmail("other@example.com");
+        inst.setActive(true);
+        inst.setCreatedBy(UUID.randomUUID());
+        inst = institutionRepository.saveAndFlush(inst);
 
-        assertThat(summary).isPresent();
-        assertThat(summary.get().getInstitutionId()).isNotNull();
+        CongressEntity congress = new CongressEntity();
+        congress.setInstitutionId(inst.getId());
+        congress.setName("Other Congress");
+        congress.setDescription("Description");
+        congress.setStartDate(LocalDate.of(2026, 6, 10));
+        congress.setEndDate(LocalDate.of(2026, 6, 15));
+        congress.setLocation("Xela");
+        congress.setPrice(new BigDecimal("80.00"));
+        congress.setCreatedBy(UUID.randomUUID());
+        return congressRepository.saveAndFlush(congress).getId();
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    private UUID createRoom(UUID targetCongressId, String name) {
+        RoomEntity room = new RoomEntity();
+        room.setCongressId(targetCongressId);
+        room.setName(name);
+        room.setCreatedBy(UUID.randomUUID());
+        return roomRepository.saveAndFlush(room).getId();
+    }
+
+    private UUID createActivity(
+            UUID targetCongressId,
+            UUID targetRoomId,
+            String name,
+            ActivityType type,
+            Integer workshopCapacity,
+            OffsetDateTime startTime
+    ) {
+        ActivityEntity activity = new ActivityEntity();
+        activity.setCongressId(targetCongressId);
+        activity.setRoomId(targetRoomId);
+        activity.setName(name);
+        activity.setDescription("Description");
+        activity.setType(type);
+        activity.setStartTime(startTime);
+        activity.setEndTime(startTime.plusHours(1));
+        activity.setWorkshopCapacity(workshopCapacity);
+        activity.setCreatedBy(UUID.randomUUID());
+        return activityRepository.saveAndFlush(activity).getId();
+    }
 
     private void persistAttendance(UUID activityId, UUID userId, String personalId) {
-        AttendanceEntity a = new AttendanceEntity();
-        a.setActivityId(activityId);
-        a.setUserId(userId);
-        a.setPersonalIdSnapshot(personalId);
-        a.setRegisteredBy(UUID.randomUUID());
-        a.setRegisteredAt(OffsetDateTime.now());
-        a.setCreatedBy(UUID.randomUUID());
-        a.setCreatedAt(OffsetDateTime.now());
-        attendanceRepository.saveAndFlush(a);
+        AttendanceEntity attendance = new AttendanceEntity();
+        attendance.setActivityId(activityId);
+        attendance.setUserId(userId);
+        attendance.setPersonalIdSnapshot(personalId);
+        attendance.setRegisteredBy(UUID.randomUUID());
+        attendance.setRegisteredAt(OffsetDateTime.now());
+        attendance.setCreatedBy(UUID.randomUUID());
+        attendance.setCreatedAt(OffsetDateTime.now());
+        attendanceRepository.saveAndFlush(attendance);
     }
 
     private void persistReservation(UUID activityId, UUID userId) {
-        ReservationEntity r = new ReservationEntity();
-        r.setActivityId(activityId);
-        r.setUserId(userId);
-        r.setReservedAt(OffsetDateTime.now());
-        r.setCreatedBy(UUID.randomUUID());
-        reservationRepository.saveAndFlush(r);
+        ReservationEntity reservation = new ReservationEntity();
+        reservation.setActivityId(activityId);
+        reservation.setUserId(userId);
+        reservation.setReservedAt(OffsetDateTime.now());
+        reservation.setCreatedBy(UUID.randomUUID());
+        reservationRepository.saveAndFlush(reservation);
     }
 }

@@ -15,6 +15,8 @@ import ayd2.p2b.conference_service_api.feature.report.dto.response.RosterEntry;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.WorkshopReservationItem;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.WorkshopReservationsReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.infrastructure.export.HtmlReportExporter;
+import ayd2.p2b.conference_service_api.feature.report.infrastructure.export.ReportTableModel;
+import ayd2.p2b.conference_service_api.feature.report.infrastructure.export.ReportTableModelFactory;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
@@ -65,6 +67,8 @@ class ReportControllerTest {
     private CongressesByInstitutionReportUseCase congressesByInstitutionReportUseCase;
     @MockitoBean
     private HtmlReportExporter htmlReportExporter;
+    @MockitoBean
+    private ReportTableModelFactory reportTableModelFactory;
 
     private static final String SECRET = "test_secret_key_with_at_least_32_chars";
     private static final UUID CONGRESS_ID = UUID.randomUUID();
@@ -109,6 +113,7 @@ class ReportControllerTest {
         String token = buildToken(USER_ID, "CONGRESS_ADMIN");
         when(participantsReportUseCase.execute(any(), any(), any()))
                 .thenReturn(ParticipantsReportResponse.builder().items(List.of()).totalItems(0).build());
+        when(reportTableModelFactory.participants(any())).thenReturn(sampleTableModel());
         when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html><body>test</body></html>");
 
         mockMvc.perform(get("/reports/participants")
@@ -202,6 +207,7 @@ class ReportControllerTest {
         when(attendanceByActivityReportUseCase.execute(any(), any(), any(), any(), any(), any()))
                 .thenReturn(AttendanceByActivityReportResponse.builder()
                         .items(List.of(item)).totalItems(1).build());
+        when(reportTableModelFactory.attendanceByActivity(any())).thenReturn(sampleTableModel());
         when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html>attendance</html>");
 
         mockMvc.perform(get("/reports/attendance-by-activity")
@@ -226,6 +232,7 @@ class ReportControllerTest {
         when(workshopReservationsReportUseCase.execute(any(), any(), any()))
                 .thenReturn(WorkshopReservationsReportResponse.builder()
                         .items(List.of(item)).totalItems(1).build());
+        when(reportTableModelFactory.workshopReservations(any())).thenReturn(sampleTableModel());
         when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html>workshops</html>");
 
         mockMvc.perform(get("/reports/workshop-reservations")
@@ -252,6 +259,7 @@ class ReportControllerTest {
         when(congressesByInstitutionReportUseCase.execute(any(), any(), any()))
                 .thenReturn(CongressesByInstitutionReportResponse.builder()
                         .items(List.of(item)).totalItems(1).build());
+        when(reportTableModelFactory.congressesByInstitution(any())).thenReturn(sampleTableModel());
         when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html>congresses</html>");
 
         mockMvc.perform(get("/reports/congresses-by-institution")
@@ -275,6 +283,7 @@ class ReportControllerTest {
         when(participantsReportUseCase.execute(any(), any(), any()))
                 .thenReturn(ParticipantsReportResponse.builder()
                         .items(List.of(item)).totalItems(1).build());
+        when(reportTableModelFactory.participants(any())).thenReturn(sampleTableModel());
         when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html>participants</html>");
 
         mockMvc.perform(get("/reports/participants")
@@ -294,6 +303,7 @@ class ReportControllerTest {
         when(participantsReportUseCase.execute(any(), any(), any()))
                 .thenReturn(ParticipantsReportResponse.builder()
                         .items(List.of(item)).totalItems(1).build());
+        when(reportTableModelFactory.participants(any())).thenReturn(sampleTableModel());
         when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html>ok</html>");
 
         mockMvc.perform(get("/reports/participants")
@@ -317,6 +327,7 @@ class ReportControllerTest {
         when(attendanceByActivityReportUseCase.execute(any(), any(), any(), any(), any(), any()))
                 .thenReturn(AttendanceByActivityReportResponse.builder()
                         .items(List.of(item)).totalItems(1).build());
+        when(reportTableModelFactory.attendanceByActivity(any())).thenReturn(sampleTableModel());
         when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html>ok</html>");
 
         mockMvc.perform(get("/reports/attendance-by-activity")
@@ -342,6 +353,7 @@ class ReportControllerTest {
         when(congressesByInstitutionReportUseCase.execute(any(), any(), any()))
                 .thenReturn(CongressesByInstitutionReportResponse.builder()
                         .items(List.of(item)).totalItems(1).build());
+        when(reportTableModelFactory.congressesByInstitution(any())).thenReturn(sampleTableModel());
         when(htmlReportExporter.export(any(), any(), any())).thenReturn("<html>ok</html>");
 
         mockMvc.perform(get("/reports/congresses-by-institution")
@@ -370,5 +382,13 @@ class ReportControllerTest {
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
                 .signWith(key)
                 .compact();
+    }
+
+    private ReportTableModel sampleTableModel() {
+        return ReportTableModel.builder()
+                .title("Reporte")
+                .headers(List.of("Columna"))
+                .rows(List.of(List.of("Valor")))
+                .build();
     }
 }
