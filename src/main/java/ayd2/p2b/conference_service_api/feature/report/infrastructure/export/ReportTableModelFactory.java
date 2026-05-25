@@ -4,6 +4,11 @@ import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceAct
 import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceByActivityReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.CongressByInstitutionItem;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.CongressesByInstitutionReportResponse;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsByCongressItem;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsByCongressReportResponse;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsCongressItem;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsInstitutionItem;
+import ayd2.p2b.conference_service_api.feature.report.dto.response.EarningsReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.ParticipantItem;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.ParticipantsReportResponse;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.RosterEntry;
@@ -11,6 +16,7 @@ import ayd2.p2b.conference_service_api.feature.report.dto.response.WorkshopReser
 import ayd2.p2b.conference_service_api.feature.report.dto.response.WorkshopReservationsReportResponse;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -74,6 +80,37 @@ public class ReportTableModelFactory {
                 .build();
     }
 
+    public ReportTableModel earningsByCongress(EarningsByCongressReportResponse response) {
+        List<List<String>> rows = safeList(response == null ? null : response.getItems())
+                .stream()
+                .map(this::earningsByCongressItemToRow)
+                .toList();
+        return ReportTableModel.builder()
+                .title("Ganancias por Congreso")
+                .headers(List.of("Congreso", "Total", "Comisión", "Neto", "Pagos"))
+                .rows(rows)
+                .build();
+    }
+
+    public ReportTableModel earnings(EarningsReportResponse response) {
+        List<List<String>> rows = new ArrayList<>();
+        for (EarningsInstitutionItem institutionItem : safeList(response == null ? null : response.getItems())) {
+            List<EarningsCongressItem> congresses = safeList(institutionItem.getCongresses());
+            if (congresses.isEmpty()) {
+                rows.add(institutionWithoutCongressesToRow(institutionItem));
+                continue;
+            }
+            for (EarningsCongressItem congressItem : congresses) {
+                rows.add(institutionCongressEarningsToRow(institutionItem, congressItem));
+            }
+        }
+        return ReportTableModel.builder()
+                .title("Ganancias de la Plataforma")
+                .headers(List.of("Institución", "Congreso", "Total", "Comisión", "Neto", "Pagos"))
+                .rows(rows)
+                .build();
+    }
+
     private List<String> participantToRow(ParticipantItem item) {
         String types = item.getParticipationTypes() == null
                 ? ""
@@ -124,8 +161,44 @@ public class ReportTableModelFactory {
         );
     }
 
+    private List<String> earningsByCongressItemToRow(EarningsByCongressItem item) {
+        return List.of(
+                orEmpty(item.getCongressName()),
+                toPlain(item.getTotalAmount()),
+                toPlain(item.getCommissionAmount()),
+                toPlain(item.getNetAmount()),
+                String.valueOf(item.getPaymentCount())
+        );
+    }
+
+    private List<String> institutionCongressEarningsToRow(EarningsInstitutionItem institutionItem, EarningsCongressItem congressItem) {
+        return List.of(
+                orEmpty(institutionItem.getInstitutionName()),
+                orEmpty(congressItem.getCongressName()),
+                toPlain(congressItem.getTotalAmount()),
+                toPlain(congressItem.getCommissionAmount()),
+                toPlain(congressItem.getNetAmount()),
+                String.valueOf(congressItem.getPaymentCount())
+        );
+    }
+
+    private List<String> institutionWithoutCongressesToRow(EarningsInstitutionItem item) {
+        return List.of(
+                orEmpty(item.getInstitutionName()),
+                "",
+                toPlain(item.getInstitutionTotalAmount()),
+                toPlain(item.getInstitutionTotalCommission()),
+                toPlain(item.getInstitutionTotalNet()),
+                String.valueOf(item.getPaymentCount())
+        );
+    }
+
     private String orEmpty(String value) {
         return value != null ? value : "";
+    }
+
+    private String toPlain(BigDecimal value) {
+        return value != null ? value.toPlainString() : "";
     }
 
     private <T> List<T> safeList(List<T> value) {
