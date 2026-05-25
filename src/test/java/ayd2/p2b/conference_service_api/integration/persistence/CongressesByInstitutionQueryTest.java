@@ -67,25 +67,27 @@ class CongressesByInstitutionQueryTest {
     @Test
     void dateFrom_filter_excludes_earlier_congresses() {
         InstitutionEntity inst = persistInstitution("Gamma");
-        persistCongress(inst.getId(), "Early", LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 3));
-        persistCongress(inst.getId(), "Late", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 3));
+        persistCongress(inst.getId(), "Boundary", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 3));
+        persistCongress(inst.getId(), "After", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 3));
+        persistCongress(inst.getId(), "Before", LocalDate.of(2025, 12, 31), LocalDate.of(2026, 1, 2));
 
         List<CongressByInstitutionItem> result = query.query(LocalDate.of(2026, 1, 1), null);
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCongressName()).isEqualTo("Late");
+        assertThat(result).extracting(CongressByInstitutionItem::getCongressName)
+                .containsExactly("Boundary", "After");
     }
 
     @Test
     void dateTo_filter_excludes_later_congresses() {
         InstitutionEntity inst = persistInstitution("Delta");
-        persistCongress(inst.getId(), "Early", LocalDate.of(2025, 6, 1), LocalDate.of(2025, 6, 3));
-        persistCongress(inst.getId(), "Late", LocalDate.of(2027, 1, 1), LocalDate.of(2027, 1, 5));
+        persistCongress(inst.getId(), "Before", LocalDate.of(2025, 6, 1), LocalDate.of(2025, 6, 3));
+        persistCongress(inst.getId(), "Boundary", LocalDate.of(2025, 12, 31), LocalDate.of(2026, 1, 2));
+        persistCongress(inst.getId(), "After", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5));
 
         List<CongressByInstitutionItem> result = query.query(null, LocalDate.of(2025, 12, 31));
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCongressName()).isEqualTo("Early");
+        assertThat(result).extracting(CongressByInstitutionItem::getCongressName)
+                .containsExactly("Before", "Boundary");
     }
 
     @Test
@@ -109,35 +111,62 @@ class CongressesByInstitutionQueryTest {
         persistCongress(instZ.getId(), "ZetaConf1", LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 5));
         persistCongress(instA.getId(), "AlphaConf2", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 5));
         persistCongress(instA.getId(), "AlphaConf1", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5));
+        persistCongress(instA.getId(), "BetaTie", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 4));
+        persistCongress(instA.getId(), "AlphaTie", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 3));
 
         List<CongressByInstitutionItem> result = query.query(null, null);
 
-        assertThat(result).hasSize(3);
-        assertThat(result.get(0).getInstitutionName()).isEqualTo("Alpha");
-        assertThat(result.get(0).getCongressName()).isEqualTo("AlphaConf1");
-        assertThat(result.get(1).getCongressName()).isEqualTo("AlphaConf2");
-        assertThat(result.get(2).getInstitutionName()).isEqualTo("Zeta");
+        assertThat(result).hasSize(5);
+        assertThat(result).extracting(CongressByInstitutionItem::getInstitutionName).containsExactly(
+                "Alpha", "Alpha", "Alpha", "Alpha", "Zeta");
+        assertThat(result).extracting(CongressByInstitutionItem::getCongressName).containsExactly(
+                "AlphaConf1", "AlphaTie", "BetaTie", "AlphaConf2", "ZetaConf1");
+    }
+
+    @Test
+    void inactive_institution_with_historical_congress_is_included() {
+        InstitutionEntity inactiveInstitution = persistInstitution("HistoricInst", false);
+        persistCongress(inactiveInstitution.getId(), "Historic Congress",
+                LocalDate.of(2024, 2, 10), LocalDate.of(2024, 2, 12), "Antigua Guatemala", "150.50");
+
+        List<CongressByInstitutionItem> result = query.query(null, null);
+
+        assertThat(result).hasSize(1);
+        CongressByInstitutionItem item = result.get(0);
+        assertThat(item.getInstitutionName()).isEqualTo("HistoricInst");
+        assertThat(item.getCongressName()).isEqualTo("Historic Congress");
+        assertThat(item.getLocation()).isEqualTo("Antigua Guatemala");
+        assertThat(item.getPrice()).isEqualByComparingTo("150.50");
     }
 
     private InstitutionEntity persistInstitution(String name) {
+        return persistInstitution(name, true);
+    }
+
+    private InstitutionEntity persistInstitution(String name, boolean active) {
         InstitutionEntity inst = new InstitutionEntity();
         inst.setName(name);
         inst.setDescription("Desc " + name);
         inst.setContactEmail(name.toLowerCase() + "@test.com");
-        inst.setActive(true);
+        inst.setActive(active);
         inst.setCreatedBy(UUID.randomUUID());
         return institutionRepository.saveAndFlush(inst);
     }
 
     private CongressEntity persistCongress(UUID institutionId, String name, LocalDate startDate, LocalDate endDate) {
+        return persistCongress(institutionId, name, startDate, endDate, "Guatemala", "50.00");
+    }
+
+    private CongressEntity persistCongress(UUID institutionId, String name, LocalDate startDate, LocalDate endDate,
+                                           String location, String price) {
         CongressEntity congress = new CongressEntity();
         congress.setInstitutionId(institutionId);
         congress.setName(name);
         congress.setDescription("Desc " + name);
         congress.setStartDate(startDate);
         congress.setEndDate(endDate);
-        congress.setLocation("Guatemala");
-        congress.setPrice(new BigDecimal("50.00"));
+        congress.setLocation(location);
+        congress.setPrice(new BigDecimal(price));
         congress.setCreatedBy(UUID.randomUUID());
         return congressRepository.saveAndFlush(congress);
     }

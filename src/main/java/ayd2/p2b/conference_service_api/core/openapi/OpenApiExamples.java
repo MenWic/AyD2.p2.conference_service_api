@@ -99,6 +99,9 @@ public final class OpenApiExamples {
     public static final String WORKSHOP_RESERVATIONS_REPORT_SUCCESS = """
             {"data":{"items":[{"activityId":"3a6d8f8e-a077-4a66-a7d3-c8dd90666fc2","activityName":"Taller de Cloud Native","workshopCapacity":30,"reservationCount":2,"availableSeats":28,"roster":[{"personalId":"A1234567","fullName":"Ana Maria Lopez","email":"ana.lopez@example.com","participationType":"SPEAKER"},{"personalId":"B7654321","fullName":"Luis Perez","email":"luis.perez@example.com","participationType":"ENROLLED"}]}],"totalItems":1}}
             """;
+    public static final String CONGRESSES_BY_INSTITUTION_REPORT_SUCCESS = """
+            {"data":{"items":[{"institutionId":"d2719de1-0409-4d2e-bf9b-a06f0ea74df7","institutionName":"Universidad de San Carlos","congressId":"7d899e63-481d-4df8-87f1-7a8d8f437b68","congressName":"Congreso Nacional de Ingenieria","startDate":"2026-09-10","endDate":"2026-09-12","location":"Ciudad de Guatemala","price":85.00}],"totalItems":1}}
+            """;
     public static final String PAGE_RESPONSE_SUCCESS = """
             {"data":{"items":[],"page":0,"size":20,"totalItems":0,"totalPages":0}}
             """;
