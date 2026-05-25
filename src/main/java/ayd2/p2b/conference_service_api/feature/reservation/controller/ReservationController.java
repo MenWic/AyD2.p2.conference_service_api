@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.reservation.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.reservation.application.cancel.CancelReservationUseCase;
 import ayd2.p2b.conference_service_api.feature.reservation.application.exception.ReservationExceptions;
@@ -11,6 +12,8 @@ import ayd2.p2b.conference_service_api.feature.reservation.application.reserve.R
 import ayd2.p2b.conference_service_api.feature.reservation.dto.internal.ReservationRequesterContext;
 import ayd2.p2b.conference_service_api.feature.reservation.dto.response.ReservationResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -63,14 +66,15 @@ public class ReservationController {
     @PostMapping("/activities/{id}/reservations")
     @Operation(
             summary = "Reserve a workshop seat",
+            description = "Creates a reservation for a TALLER activity. Requires participant enrollment and available workshop capacity.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Reservation created"),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Activity not found", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Reservation conflict", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Domain invariant violated", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Reservation conflict", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.CONFLICT_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Domain invariant violated", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.DOMAIN_INVARIANT_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<ReservationResponse>> reserveActivity(
@@ -88,6 +92,7 @@ public class ReservationController {
     @GetMapping("/activities/{id}/reservations")
     @Operation(
             summary = "List reservations for an activity",
+            description = "Returns paginated reservations for an activity. Requires CONGRESS_ADMIN owner/scoped access.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Reservations listed"),
@@ -99,7 +104,9 @@ public class ReservationController {
     )
     public ResponseEntity<ApiResponse<PageResponse<ReservationResponse>>> listActivityReservations(
             @PathVariable("id") UUID activityId,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             Authentication authentication
@@ -114,6 +121,7 @@ public class ReservationController {
     @GetMapping("/users/{id}/reservations")
     @Operation(
             summary = "List reservations for a user (self only)",
+            description = "Returns paginated reservations for a user. Self-only endpoint for PARTICIPANT.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Reservations listed"),
@@ -123,7 +131,9 @@ public class ReservationController {
     )
     public ResponseEntity<ApiResponse<PageResponse<ReservationResponse>>> listUserReservations(
             @PathVariable("id") UUID requestedUserId,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             Authentication authentication
@@ -138,6 +148,7 @@ public class ReservationController {
     @DeleteMapping("/reservations/{id}")
     @Operation(
             summary = "Cancel reservation",
+            description = "Cancels reservation for its owner. Cancellation is blocked with conflict when attendance already exists.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Reservation cancelled"),

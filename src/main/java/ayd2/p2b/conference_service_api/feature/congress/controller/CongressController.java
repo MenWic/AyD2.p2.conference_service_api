@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.congress.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.congress.application.exception.CongressExceptions;
 import ayd2.p2b.conference_service_api.feature.congress.application.create.CreateCongressUseCase;
@@ -15,6 +16,8 @@ import ayd2.p2b.conference_service_api.feature.congress.dto.request.CreateCongre
 import ayd2.p2b.conference_service_api.feature.congress.dto.request.UpdateCongressRequest;
 import ayd2.p2b.conference_service_api.feature.congress.dto.response.CongressResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -77,13 +80,14 @@ public class CongressController {
     @PostMapping
     @Operation(
             summary = "Create congress",
+            description = "Creates a congress for an institution linked to the requester CongressAdmin. Enforces price >= 35.00 and valid date range.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Congress created"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Institution not found", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Domain invariant violated", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.TOKEN_INVALID_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.FORBIDDEN_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Institution not found", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.NOT_FOUND_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Domain invariant violated", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.DOMAIN_INVARIANT_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<CongressResponse>> createCongress(
@@ -102,17 +106,24 @@ public class CongressController {
     @GetMapping
     @Operation(
             summary = "List congresses",
+            description = "Public paginated listing of congresses with optional filters by institution, start-date range, and search text.",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Congresses listed"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<PageResponse<CongressResponse>>> listCongresses(
+            @Parameter(description = "Institution filter (UUID)", example = "d2719de1-0409-4d2e-bf9b-a06f0ea74df7")
             @RequestParam(required = false) UUID institutionId,
+            @Parameter(description = "Lower bound for congress start date (inclusive, yyyy-MM-dd)", example = "2026-09-01")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDateFrom,
+            @Parameter(description = "Upper bound for congress start date (inclusive, yyyy-MM-dd)", example = "2026-09-30")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDateTo,
+            @Parameter(description = "Case-insensitive search by congress name", example = "ingenieria")
             @RequestParam(required = false) String search,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size
     ) {
         if (startDateFrom != null && startDateTo != null && startDateFrom.isAfter(startDateTo)) {
@@ -134,9 +145,10 @@ public class CongressController {
     @GetMapping("/{id}")
     @Operation(
             summary = "Get congress by id",
+            description = "Returns a congress detail by UUID. Public endpoint.",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Congress found"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.NOT_FOUND_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<CongressResponse>> getCongress(@PathVariable UUID id) {
@@ -147,6 +159,7 @@ public class CongressController {
     @PutMapping("/{id}")
     @Operation(
             summary = "Update congress",
+            description = "Updates a congress. Requires CONGRESS_ADMIN owner/scoped access to the congress institution.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Congress updated"),
@@ -170,6 +183,7 @@ public class CongressController {
     @DeleteMapping("/{id}")
     @Operation(
             summary = "Delete congress",
+            description = "Deletes a congress when no blocking dependencies exist. Requires CONGRESS_ADMIN owner/scoped access.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Congress deleted"),

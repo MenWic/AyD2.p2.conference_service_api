@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.committee.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.committee.application.add.AddCommitteeMemberUseCase;
 import ayd2.p2b.conference_service_api.feature.committee.application.exception.CommitteeExceptions;
@@ -11,6 +12,8 @@ import ayd2.p2b.conference_service_api.feature.committee.dto.internal.CommitteeR
 import ayd2.p2b.conference_service_api.feature.committee.dto.request.AddCommitteeMemberRequest;
 import ayd2.p2b.conference_service_api.feature.committee.dto.response.CommitteeMemberResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -65,10 +68,11 @@ public class CommitteeController {
     @PostMapping("/congresses/{id}/committee")
     @Operation(
             summary = "Add committee member to congress",
+            description = "Adds scoped committee membership for a congress (congressId + userId). COMMITTEE_MEMBER is not a global JWT role.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Committee member added"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR))),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Congress not found", content = @Content),
@@ -93,6 +97,7 @@ public class CommitteeController {
     @GetMapping("/congresses/{id}/committee")
     @Operation(
             summary = "List committee members by congress",
+            description = "Lists scoped committee memberships for a congress. Accessible by CONGRESS_ADMIN owner/scoped or SYSTEM_ADMIN.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Committee members listed"),
@@ -107,7 +112,9 @@ public class CommitteeController {
             @PathVariable("id") UUID congressId,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             Authentication authentication,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size
     ) {
         CommitteeRequesterContext requester = requireCommitteeReadRequester(authentication, authorization);
@@ -119,6 +126,7 @@ public class CommitteeController {
     @DeleteMapping("/congresses/{id}/committee/{userId}")
     @Operation(
             summary = "Remove committee member from congress",
+            description = "Removes scoped committee membership from a congress. Requires CONGRESS_ADMIN owner/scoped access.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Committee member removed"),

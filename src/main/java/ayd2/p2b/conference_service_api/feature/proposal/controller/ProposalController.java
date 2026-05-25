@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.proposal.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.proposal.application.exception.ProposalExceptions;
 import ayd2.p2b.conference_service_api.feature.proposal.application.list.ListProposalsByCallUseCase;
@@ -13,6 +14,8 @@ import ayd2.p2b.conference_service_api.feature.proposal.dto.internal.ProposalReq
 import ayd2.p2b.conference_service_api.feature.proposal.dto.request.CreateProposalRequest;
 import ayd2.p2b.conference_service_api.feature.proposal.dto.response.ProposalResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -70,10 +73,11 @@ public class ProposalController {
     @PostMapping("/calls/{id}/proposals")
     @Operation(
             summary = "Submit proposal to an open call",
+            description = "PARTICIPANT submits a proposal to an OPEN call. Approval does not schedule activities automatically.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Proposal submitted"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR))),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Call not found", content = @Content),
@@ -96,6 +100,7 @@ public class ProposalController {
     @GetMapping("/calls/{id}/proposals")
     @Operation(
             summary = "List proposals by call",
+            description = "Lists proposals by call. Access requires CONGRESS_ADMIN owner/scoped or committee membership scoped to the congress.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Proposals listed"),
@@ -122,6 +127,7 @@ public class ProposalController {
     @GetMapping("/users/{id}/proposals")
     @Operation(
             summary = "List proposals by user (self only)",
+            description = "Lists proposals for a user. Self-only endpoint.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Proposals listed"),
@@ -134,7 +140,9 @@ public class ProposalController {
             @PathVariable("id") UUID userId,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             Authentication authentication,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size
     ) {
         ProposalRequesterContext requester = buildRequesterContext(authentication, authorization);
@@ -146,6 +154,7 @@ public class ProposalController {
     @PatchMapping("/proposals/{id}/approve")
     @Operation(
             summary = "Approve proposal",
+            description = "Committee member scoped to the congress approves a PENDING proposal. APPROVED is terminal.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Proposal approved"),
@@ -169,6 +178,7 @@ public class ProposalController {
     @PatchMapping("/proposals/{id}/reject")
     @Operation(
             summary = "Reject proposal",
+            description = "Committee member scoped to the congress rejects a PENDING proposal. REJECTED is terminal.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Proposal rejected"),

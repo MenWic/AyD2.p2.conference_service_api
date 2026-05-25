@@ -15,7 +15,7 @@ public class ConferenceOpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Conference Service API")
-                        .description("Conference, institutions, activities, registrations, attendance and certificates API for the AyD2 P2B microservices ecosystem.")
+                        .description("API for institution and congress management, academic programming, calls/proposals/committee workflows, enrollments, reservations, attendance, and diplomas.")
                         .version("v1"))
                 .components(new Components()
                         .addSecuritySchemes(
