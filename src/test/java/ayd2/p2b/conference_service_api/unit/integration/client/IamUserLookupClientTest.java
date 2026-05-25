@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.unit.integration.client;
 
 import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.integration.client.IamUserLookupClient;
+import ayd2.p2b.conference_service_api.integration.dto.IamUserDetailSummary;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserSummary;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -629,5 +630,121 @@ class IamUserLookupClientTest {
                     assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
                     assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
                 });
+    }
+
+    // ── getUserDetailsSummary tests ───────────────────────────────────────────
+
+    @Test
+    void getUserDetailsSummary_returns_empty_map_for_empty_user_ids() {
+        Map<UUID, IamUserDetailSummary> result = client.getUserDetailsSummary(Set.of(), "token");
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void getUserDetailsSummary_throws_when_token_is_blank() {
+        assertThatThrownBy(() -> client.getUserDetailsSummary(Set.of(UUID.randomUUID()), "  "))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus())
+                        .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+    }
+
+    @Test
+    void getUserDetailsSummary_returns_user_details_for_known_user() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer token"))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "id": "%s",
+                            "fullName": "Maria Garcia",
+                            "email": "maria@usac.edu",
+                            "active": true,
+                            "roles": ["PARTICIPANT"],
+                            "linkedInstitutions": []
+                          }
+                        }
+                        """.formatted(userId),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        Map<UUID, IamUserDetailSummary> result = client.getUserDetailsSummary(Set.of(userId), "token");
+
+        assertThat(result).containsKey(userId);
+        assertThat(result.get(userId).getFullName()).isEqualTo("Maria Garcia");
+        assertThat(result.get(userId).getEmail()).isEqualTo("maria@usac.edu");
+        assertThat(result.get(userId).isActive()).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void getUserDetailsSummary_skips_user_on_404_or_403() {
+        UUID missingUser = UUID.fromString("00000000-0000-0000-0000-000000000020");
+        UUID presentUser = UUID.fromString("00000000-0000-0000-0000-000000000021");
+
+        server.expect(requestTo(BASE_URL + "/users/" + missingUser))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+        server.expect(requestTo(BASE_URL + "/users/" + presentUser))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "data": {
+                            "id": "%s",
+                            "fullName": "Present User",
+                            "email": "present@example.com",
+                            "active": true,
+                            "roles": [],
+                            "linkedInstitutions": []
+                          }
+                        }
+                        """.formatted(presentUser),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        Map<UUID, IamUserDetailSummary> result = client.getUserDetailsSummary(
+                Set.of(missingUser, presentUser), "token");
+
+        assertThat(result).containsOnlyKeys(presentUser);
+        server.verify();
+    }
+
+    @Test
+    void getUserDetailsSummary_throws_iam_unavailable_on_server_error() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        assertThatThrownBy(() -> client.getUserDetailsSummary(Set.of(userId), "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
+    void getUserDetailsSummary_throws_iam_unavailable_when_data_wrapper_missing() {
+        UUID userId = UUID.randomUUID();
+
+        server.expect(requestTo(BASE_URL + "/users/" + userId))
+                .andRespond(withSuccess("{\"message\":\"ok\"}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.getUserDetailsSummary(Set.of(userId), "token"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus())
+                        .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+    }
+
+    @Test
+    void getUserDetailsSummary_returns_empty_when_null_user_ids() {
+        Map<UUID, IamUserDetailSummary> result = client.getUserDetailsSummary(null, "token");
+
+        assertThat(result).isEmpty();
     }
 }

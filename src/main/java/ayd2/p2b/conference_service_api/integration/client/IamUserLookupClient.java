@@ -7,6 +7,7 @@ import ayd2.p2b.conference_service_api.integration.dto.IamCommitteeCandidateSumm
 import ayd2.p2b.conference_service_api.integration.dto.IamCommitteeEligibilityResponse;
 import ayd2.p2b.conference_service_api.integration.dto.IamInternalUserIdentityResponse;
 import ayd2.p2b.conference_service_api.integration.dto.IamPersonalIdUserSummary;
+import ayd2.p2b.conference_service_api.integration.dto.IamUserDetailSummary;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserResponse;
 import ayd2.p2b.conference_service_api.integration.dto.IamUserSummary;
 import ayd2.p2b.conference_service_api.integration.port.IamUserLookupPort;
@@ -38,6 +39,7 @@ public class IamUserLookupClient implements IamUserLookupPort {
             @Value("${integration.iam.base-url:http://localhost:8081}") String iamBaseUrl,
             @Value("${integration.iam.service-token:}") String serviceToken
     ) {
+        System.out.println("IAM Base URL: " + iamBaseUrl);
         this.restClient = restClientBuilder.baseUrl(iamBaseUrl).build();
         this.serviceToken = serviceToken;
     }
@@ -199,6 +201,47 @@ public class IamUserLookupClient implements IamUserLookupPort {
         } catch (RuntimeException ex) {
             throw IntegrationExceptions.iamUnavailable();
         }
+    }
+
+    @Override
+    public Map<UUID, IamUserDetailSummary> getUserDetailsSummary(Set<UUID> userIds, String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            throw IntegrationExceptions.iamUnavailable("Bearer token is required for IAM user detail lookup");
+        }
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<UUID, IamUserDetailSummary> summaries = new LinkedHashMap<>();
+        for (UUID userId : userIds.stream().sorted(Comparator.comparing(UUID::toString)).toList()) {
+            if (userId == null) {
+                continue;
+            }
+            try {
+                ApiResponse<IamUserResponse> response = fetchUserById(userId, accessToken);
+                IamUserResponse data = extractUserDataOrThrow(response);
+                summaries.put(userId, IamUserDetailSummary.builder()
+                        .id(data.getId())
+                        .fullName(data.getFullName())
+                        .email(data.getEmail())
+                        .active(Boolean.TRUE.equals(data.getActive()))
+                        .roles(data.getRoles() == null ? Set.of() : Set.copyOf(data.getRoles()))
+                        .build());
+            } catch (RestClientResponseException ex) {
+                int status = ex.getStatusCode().value();
+                if (status == 403 || status == 404) {
+                    continue;
+                }
+                throw IntegrationExceptions.iamUnavailable();
+            } catch (RestClientException ex) {
+                throw IntegrationExceptions.iamUnavailable();
+            } catch (ApiException ex) {
+                throw ex;
+            } catch (RuntimeException ex) {
+                throw IntegrationExceptions.iamUnavailable();
+            }
+        }
+        return summaries;
     }
 
     private ApiResponse<IamUserResponse> fetchUserById(UUID userId, String accessToken) {
