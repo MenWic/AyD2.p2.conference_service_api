@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.activity.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.activity.application.create.CreateActivityUseCase;
 import ayd2.p2b.conference_service_api.feature.activity.application.delete.DeleteActivityUseCase;
@@ -16,6 +17,8 @@ import ayd2.p2b.conference_service_api.feature.activity.dto.request.CreateActivi
 import ayd2.p2b.conference_service_api.feature.activity.dto.request.UpdateActivityRequest;
 import ayd2.p2b.conference_service_api.feature.activity.dto.response.ActivityResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -78,15 +81,16 @@ public class ActivityController {
     @PostMapping("/congresses/{id}/activities")
     @Operation(
             summary = "Create activity in congress",
+            description = "Creates a congress activity. Enforces type-specific capacity rules, startTime < endTime, and room overlap constraints. Activity leaders are attached as part of the request.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Activity created"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Congress or room not found", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Domain invariant violated", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "IAM unavailable", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.TOKEN_INVALID_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.FORBIDDEN_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Congress or room not found", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.NOT_FOUND_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Domain invariant violated", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.DOMAIN_INVARIANT_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "IAM unavailable", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.IAM_UNAVAILABLE_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<ActivityResponse>> createActivity(
@@ -105,6 +109,7 @@ public class ActivityController {
     @GetMapping("/congresses/{id}/activities")
     @Operation(
             summary = "List activities by congress",
+            description = "Public paginated list of activities by congress. Supports filters by room, type, and date-time range.",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Activities listed"),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
@@ -113,11 +118,17 @@ public class ActivityController {
     )
     public ResponseEntity<ApiResponse<PageResponse<ActivityResponse>>> listActivitiesByCongress(
             @PathVariable("id") UUID congressId,
+            @Parameter(description = "Room filter (UUID)", example = "f39f1f7f-e2d2-4f2e-8cb8-95630f1a9f8e")
             @RequestParam(required = false) UUID roomId,
+            @Parameter(description = "Activity type filter", example = "TALLER")
             @RequestParam(required = false) ActivityType type,
+            @Parameter(description = "Start of date-time range (inclusive, ISO-8601)", example = "2026-10-10T00:00:00Z")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateFrom,
+            @Parameter(description = "End of date-time range (inclusive, ISO-8601)", example = "2026-10-10T23:59:59Z")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateTo,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size
     ) {
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
@@ -139,6 +150,7 @@ public class ActivityController {
     @GetMapping("/activities/{id}")
     @Operation(
             summary = "Get activity by id",
+            description = "Public activity detail endpoint.",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Activity found"),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found", content = @Content)
@@ -152,6 +164,7 @@ public class ActivityController {
     @PutMapping("/activities/{id}")
     @Operation(
             summary = "Update activity",
+            description = "Updates activity details. Type is immutable; capacity rules and room overlap checks remain enforced.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Activity updated"),
@@ -177,6 +190,7 @@ public class ActivityController {
     @DeleteMapping("/activities/{id}")
     @Operation(
             summary = "Delete activity",
+            description = "Deletes an activity only when no blocking dependencies exist (reservations, attendances, diplomas, proposal links).",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Activity deleted"),

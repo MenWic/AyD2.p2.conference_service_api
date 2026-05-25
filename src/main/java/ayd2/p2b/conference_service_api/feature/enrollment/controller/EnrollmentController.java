@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.enrollment.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.core.security.Role;
 import ayd2.p2b.conference_service_api.feature.enrollment.application.exception.EnrollmentExceptions;
@@ -13,7 +14,9 @@ import ayd2.p2b.conference_service_api.feature.enrollment.dto.internal.Enrollmen
 import ayd2.p2b.conference_service_api.feature.enrollment.dto.request.CreateEnrollmentRequest;
 import ayd2.p2b.conference_service_api.feature.enrollment.dto.response.EnrollmentResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -53,10 +56,12 @@ public class EnrollmentController {
   private final ListCongressEnrollmentsUseCase listCongressEnrollmentsUseCase;
 
   @PostMapping("/congresses/{id}/enrollments")
-  @Operation(summary = "Enroll participant in congress", security = @SecurityRequirement(name = "bearerAuth"), responses = {
+  @Operation(summary = "Enroll participant in congress",
+      description = "PARTICIPANT self enrollment endpoint. Requires Idempotency-Key header. Conference derives amount from congress price and orchestrates Wallet payment before persisting enrollment.",
+      security = @SecurityRequirement(name = "bearerAuth"), responses = {
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Enrolled successfully"),
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Idempotency replay"),
-      @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
+      @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR))),
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Congress not found", content = @Content),
@@ -66,6 +71,9 @@ public class EnrollmentController {
   public ResponseEntity<ApiResponse<EnrollmentResponse>> enroll(
       @PathVariable UUID id,
       @Valid @RequestBody CreateEnrollmentRequest request,
+      @Parameter(description = "Client/BFF-generated idempotency key. Max 120 chars. Reused by conference-service when invoking wallet-service.",
+          required = true,
+          example = "74ee4fce-8c03-4b18-8efc-3b53a4897fbe")
       @RequestHeader(name = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey,
       @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
       Authentication authentication) {
@@ -92,14 +100,18 @@ public class EnrollmentController {
   }
 
   @GetMapping("/congresses/{id}/enrollments")
-  @Operation(summary = "List enrollments for a congress", security = @SecurityRequirement(name = "bearerAuth"), responses = {
+  @Operation(summary = "List enrollments for a congress",
+      description = "Returns paginated enrollments for a congress. Requires CONGRESS_ADMIN owner/scoped access.",
+      security = @SecurityRequirement(name = "bearerAuth"), responses = {
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Enrollments listed"),
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content)
   })
   public ResponseEntity<ApiResponse<PageResponse<EnrollmentResponse>>> listCongressEnrollments(
       @PathVariable UUID id,
+      @Parameter(description = "Zero-based page index", example = "0")
       @RequestParam(defaultValue = "0") int page,
+      @Parameter(description = "Page size (max 100)", example = "20")
       @RequestParam(defaultValue = "20") int size,
       @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
       Authentication authentication) {
@@ -110,14 +122,18 @@ public class EnrollmentController {
   }
 
   @GetMapping("/users/{id}/enrollments")
-  @Operation(summary = "List enrollments for a user", security = @SecurityRequirement(name = "bearerAuth"), responses = {
+  @Operation(summary = "List enrollments for a user",
+      description = "Returns paginated enrollments for a user. Self-only endpoint for PARTICIPANT.",
+      security = @SecurityRequirement(name = "bearerAuth"), responses = {
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Enrollments listed"),
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
       @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content)
   })
   public ResponseEntity<ApiResponse<PageResponse<EnrollmentResponse>>> listUserEnrollments(
       @PathVariable UUID id,
+      @Parameter(description = "Zero-based page index", example = "0")
       @RequestParam(defaultValue = "0") int page,
+      @Parameter(description = "Page size (max 100)", example = "20")
       @RequestParam(defaultValue = "20") int size,
       @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
       Authentication authentication) {

@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.call.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.call.application.close.CloseCallUseCase;
 import ayd2.p2b.conference_service_api.feature.call.application.exception.CallExceptions;
@@ -10,6 +11,8 @@ import ayd2.p2b.conference_service_api.feature.call.application.open.OpenCallUse
 import ayd2.p2b.conference_service_api.feature.call.dto.internal.CallRequesterContext;
 import ayd2.p2b.conference_service_api.feature.call.dto.response.CallResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -61,14 +64,15 @@ public class CallController {
     @PostMapping("/congresses/{id}/calls")
     @Operation(
             summary = "Open a new call for a congress",
+            description = "Opens a call in OPEN status for a congress. Only one OPEN call is allowed per congress.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Call opened"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR))),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Congress not found", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Open call conflict", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Open call conflict", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.CONFLICT_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<CallResponse>> openCall(
@@ -86,6 +90,7 @@ public class CallController {
     @GetMapping("/congresses/{id}/calls")
     @Operation(
             summary = "List calls by congress",
+            description = "Public paginated list of calls belonging to a congress.",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Calls listed"),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
@@ -94,7 +99,9 @@ public class CallController {
     )
     public ResponseEntity<ApiResponse<PageResponse<CallResponse>>> listCallsByCongress(
             @PathVariable("id") UUID congressId,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size
     ) {
         Pageable pageable = normalizePageable(page, size);
@@ -105,6 +112,7 @@ public class CallController {
     @PatchMapping("/calls/{id}/close")
     @Operation(
             summary = "Close an open call",
+            description = "Transitions a call from OPEN to CLOSED. CLOSED is terminal and cannot be reopened.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Call closed"),

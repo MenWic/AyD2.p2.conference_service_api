@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.room.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.room.application.create.CreateRoomUseCase;
 import ayd2.p2b.conference_service_api.feature.room.application.delete.DeleteRoomUseCase;
@@ -14,6 +15,8 @@ import ayd2.p2b.conference_service_api.feature.room.dto.request.CreateRoomReques
 import ayd2.p2b.conference_service_api.feature.room.dto.request.UpdateRoomRequest;
 import ayd2.p2b.conference_service_api.feature.room.dto.response.RoomResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -74,14 +77,15 @@ public class RoomController {
     @PostMapping("/congresses/{id}/rooms")
     @Operation(
             summary = "Create room in congress",
+            description = "Creates a room within a congress. Room name must be unique per congress. Capacity is optional but must be greater than zero when present.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Room created"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Congress not found", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Room name conflict", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.TOKEN_INVALID_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.FORBIDDEN_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Congress not found", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.NOT_FOUND_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Room name conflict", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.CONFLICT_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<RoomResponse>> createRoom(
@@ -100,6 +104,7 @@ public class RoomController {
     @GetMapping("/congresses/{id}/rooms")
     @Operation(
             summary = "List rooms by congress",
+            description = "Public paginated list of rooms for a congress.",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Rooms listed"),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Congress not found", content = @Content)
@@ -107,7 +112,9 @@ public class RoomController {
     )
     public ResponseEntity<ApiResponse<PageResponse<RoomResponse>>> listRoomsByCongress(
             @PathVariable("id") UUID congressId,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size
     ) {
         Pageable pageable = normalizePageable(page, size);
@@ -118,6 +125,7 @@ public class RoomController {
     @GetMapping("/rooms/{id}")
     @Operation(
             summary = "Get room by id",
+            description = "Public room detail endpoint.",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Room found"),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found", content = @Content)
@@ -131,6 +139,7 @@ public class RoomController {
     @PutMapping("/rooms/{id}")
     @Operation(
             summary = "Update room",
+            description = "Updates a room. Requires CONGRESS_ADMIN owner/scoped access.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Room updated"),
@@ -155,6 +164,7 @@ public class RoomController {
     @DeleteMapping("/rooms/{id}")
     @Operation(
             summary = "Delete room",
+            description = "Deletes a room only when no activities are associated. Requires CONGRESS_ADMIN owner/scoped access.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Room deleted"),
