@@ -4,6 +4,7 @@ import ayd2.p2b.conference_service_api.common.exception.ApiException;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
 import ayd2.p2b.conference_service_api.feature.attendance.application.list.ListAttendanceUseCase;
 import ayd2.p2b.conference_service_api.feature.attendance.application.register.RegisterAttendanceUseCase;
+import ayd2.p2b.conference_service_api.feature.attendance.application.user.GetUserAttendanceUseCase;
 import ayd2.p2b.conference_service_api.feature.attendance.dto.response.AttendanceResponse;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -49,6 +50,8 @@ class AttendanceControllerTest {
     private RegisterAttendanceUseCase registerAttendanceUseCase;
     @MockitoBean
     private ListAttendanceUseCase listAttendanceUseCase;
+    @MockitoBean
+    private GetUserAttendanceUseCase getUserAttendanceUseCase;
 
     @Test
     void shouldRequireAuthenticationForAttendanceEndpoints() throws Exception {
