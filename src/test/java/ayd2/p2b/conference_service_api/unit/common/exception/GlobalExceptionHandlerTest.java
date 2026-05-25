@@ -5,6 +5,7 @@ import ayd2.p2b.conference_service_api.common.exception.GlobalExceptionHandler;
 import ayd2.p2b.conference_service_api.feature.activity.domain.exception.ActivityDomainException;
 import ayd2.p2b.conference_service_api.feature.attendance.domain.exception.AttendanceDomainException;
 import ayd2.p2b.conference_service_api.feature.congress.domain.exception.CongressDomainException;
+import ayd2.p2b.conference_service_api.feature.diploma.domain.exception.DiplomaDomainException;
 import ayd2.p2b.conference_service_api.feature.enrollment.domain.exception.EnrollmentDomainException;
 import ayd2.p2b.conference_service_api.feature.proposal.domain.exception.ProposalDomainException;
 import ayd2.p2b.conference_service_api.feature.reservation.domain.exception.ReservationDomainException;
@@ -104,6 +105,16 @@ class GlobalExceptionHandlerTest {
         AttendanceDomainException ex = new AttendanceDomainException("attendance invalid");
 
         ProblemDetail detail = handler.handleAttendanceDomainException(ex);
+
+        assertThat(detail.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY.value());
+        assertThat(detail.getProperties()).containsEntry("code", "domain.invariant_violated");
+    }
+
+    @Test
+    void shouldMapDiplomaDomainException() {
+        DiplomaDomainException ex = new DiplomaDomainException("diploma invalid");
+
+        ProblemDetail detail = handler.handleDiplomaDomainException(ex);
 
         assertThat(detail.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY.value());
         assertThat(detail.getProperties()).containsEntry("code", "domain.invariant_violated");
