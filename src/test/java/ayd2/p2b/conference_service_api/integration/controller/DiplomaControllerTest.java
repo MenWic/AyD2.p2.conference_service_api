@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -27,7 +28,10 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -85,6 +89,18 @@ class DiplomaControllerTest {
 
         mockMvc.perform(get("/users/{id}/diplomas", requestedUserId)
                         .header("Authorization", "Bearer " + tokenWithRoles(requesterId, List.of("PARTICIPANT"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("auth.forbidden"));
+    }
+
+    @Test
+    void shouldReturnForbiddenForNonParticipantDiplomaList() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(listUserDiplomasUseCase.execute(eq(userId), any(), any()))
+                .thenThrow(new ApiException(HttpStatus.FORBIDDEN, "auth.forbidden", "participant role required"));
+
+        mockMvc.perform(get("/users/{id}/diplomas", userId)
+                        .header("Authorization", "Bearer " + tokenWithRoles(userId, List.of("CONGRESS_ADMIN"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("auth.forbidden"));
     }
@@ -232,6 +248,42 @@ class DiplomaControllerTest {
                             .isNotBlank()
                             .doesNotContain("application/pdf");
                 });
+    }
+
+    @Test
+    void shouldNotExposeDownloadEndpoint() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID diplomaId = UUID.randomUUID();
+
+        mockMvc.perform(get("/diplomas/{id}/download", diplomaId)
+                        .header("Authorization", "Bearer " + tokenWithRoles(userId, List.of("PARTICIPANT"))))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
+                        .isNotEqualTo(200));
+    }
+
+    @Test
+    void shouldNotExposeDiplomaMutationEndpoints() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID diplomaId = UUID.randomUUID();
+
+        mockMvc.perform(post("/diplomas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .header("Authorization", "Bearer " + tokenWithRoles(userId, List.of("PARTICIPANT"))))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
+                        .isNotEqualTo(200));
+
+        mockMvc.perform(put("/diplomas/{id}", diplomaId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .header("Authorization", "Bearer " + tokenWithRoles(userId, List.of("PARTICIPANT"))))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
+                        .isNotEqualTo(200));
+
+        mockMvc.perform(delete("/diplomas/{id}", diplomaId)
+                        .header("Authorization", "Bearer " + tokenWithRoles(userId, List.of("PARTICIPANT"))))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
+                        .isNotEqualTo(200));
     }
 
     private DiplomaResponse participationResponse(UUID userId) {
