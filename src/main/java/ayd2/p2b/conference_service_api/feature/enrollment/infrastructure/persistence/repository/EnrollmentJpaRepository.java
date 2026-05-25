@@ -12,6 +12,8 @@ public interface EnrollmentJpaRepository extends JpaRepository<EnrollmentEntity,
 
   Optional<EnrollmentEntity> findByCongressIdAndUserId(UUID congressId, UUID userId);
 
+  boolean existsByCongressIdAndUserId(UUID congressId, UUID userId);
+
   Page<EnrollmentEntity> findByUserId(UUID userId, Pageable pageable);
 
   Page<EnrollmentEntity> findByCongressId(UUID congressId, Pageable pageable);

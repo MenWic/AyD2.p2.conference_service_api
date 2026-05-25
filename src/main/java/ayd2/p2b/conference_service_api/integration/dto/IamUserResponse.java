@@ -18,6 +18,7 @@ public class IamUserResponse {
     private UUID id;
     private String fullName;
     private String email;
+    private String personalId;
     private Boolean active;
     private Set<String> roles;
     private Set<UUID> linkedInstitutions;
