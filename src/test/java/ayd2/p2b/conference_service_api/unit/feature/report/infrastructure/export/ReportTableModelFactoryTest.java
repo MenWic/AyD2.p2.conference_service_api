@@ -177,6 +177,7 @@ class ReportTableModelFactoryTest {
 
         ReportTableModel table = factory.congressesByInstitution(response);
 
+        assertThat(table.getHeaders()).containsExactly("Institucion", "Congreso", "Inicio", "Fin", "Lugar", "Precio");
         assertThat(table.getRows().get(0)).containsExactly("USAC", "AydConf", "2026-06-01", "2026-06-05", "Guatemala", "100.00");
     }
 
@@ -188,6 +189,18 @@ class ReportTableModelFactoryTest {
                 .build();
 
         ReportTableModel table = factory.participants(response);
+
+        assertThat(table.getRows()).isEmpty();
+    }
+
+    @Test
+    void congresses_with_null_response_items_returns_empty_rows() {
+        CongressesByInstitutionReportResponse response = CongressesByInstitutionReportResponse.builder()
+                .items(null)
+                .totalItems(0)
+                .build();
+
+        ReportTableModel table = factory.congressesByInstitution(response);
 
         assertThat(table.getRows()).isEmpty();
     }

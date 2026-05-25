@@ -34,7 +34,7 @@ public class JpaCongressesByInstitutionQuery implements CongressesByInstitutionQ
         if (dateTo != null) {
             jpql.append(" and c.startDate <= :dateTo");
         }
-        jpql.append(" order by i.name asc, c.startDate asc");
+        jpql.append(" order by i.name asc, c.startDate asc, c.name asc");
 
         var q = entityManager.createQuery(jpql.toString(), Object[].class);
 

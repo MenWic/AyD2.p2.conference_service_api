@@ -1,6 +1,7 @@
 package ayd2.p2b.conference_service_api.feature.report.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.core.security.Role;
 import ayd2.p2b.conference_service_api.feature.report.application.attendance_summary.AttendanceByActivityReportUseCase;
@@ -19,6 +20,10 @@ import ayd2.p2b.conference_service_api.feature.report.infrastructure.export.Html
 import ayd2.p2b.conference_service_api.feature.report.infrastructure.export.ReportTableModel;
 import ayd2.p2b.conference_service_api.feature.report.infrastructure.export.ReportTableModelFactory;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -145,15 +150,55 @@ public class ReportController {
     }
 
     @GetMapping("/reports/congresses-by-institution")
-    @Operation(summary = "Congresses by institution report (SystemAdmin)", security = @SecurityRequirement(name = "bearerAuth"),
+    @Operation(
+            summary = "Congresses by institution report (SystemAdmin)",
+            description = "SYSTEM_ADMIN only. Lists congresses grouped by institution. Optional dateFrom/dateTo "
+                    + "filters are inclusive and applied to congress.startDate. "
+                    + "When format is omitted or format=json, response is ApiResponse<CongressesByInstitutionReportResponse>. "
+                    + "When format=html, response is text/html without ApiResponse.",
+            security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Report generated"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden")
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                            responseCode = "200",
+                            description = "Report generated",
+                            content = {
+                                    @Content(
+                                            mediaType = "application/json",
+                                            examples = @ExampleObject(value = OpenApiExamples.CONGRESSES_BY_INSTITUTION_REPORT_SUCCESS)
+                                    ),
+                                    @Content(mediaType = "text/html")
+                            }
+                    ),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                            responseCode = "400",
+                            description = "Validation failed (invalid format)",
+                            content = @Content(mediaType = "application/problem+json",
+                                    examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR))
+                    ),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                            responseCode = "401",
+                            description = "Unauthorized",
+                            content = @Content(mediaType = "application/problem+json",
+                                    examples = @ExampleObject(value = OpenApiExamples.TOKEN_INVALID_ERROR))
+                    ),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                            responseCode = "403",
+                            description = "Forbidden",
+                            content = @Content(mediaType = "application/problem+json",
+                                    examples = @ExampleObject(value = OpenApiExamples.FORBIDDEN_ERROR))
+                    )
             })
     public ResponseEntity<?> congressesByInstitution(
+            @Parameter(description = "Inclusive start date filter applied to congress.startDate",
+                    example = "2026-01-01")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @Parameter(description = "Inclusive end date filter applied to congress.startDate",
+                    example = "2026-12-31")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @Parameter(
+                    description = "Response format. Omit or use json for ApiResponse JSON; use html for text/html export.",
+                    schema = @Schema(allowableValues = {"json", "html"}),
+                    example = "json")
             @RequestParam(required = false) String format,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             Authentication authentication) {

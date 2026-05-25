@@ -7,6 +7,7 @@ import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.attendance.application.exception.AttendanceExceptions;
 import ayd2.p2b.conference_service_api.feature.attendance.application.list.ListAttendanceUseCase;
 import ayd2.p2b.conference_service_api.feature.attendance.application.register.RegisterAttendanceUseCase;
+import ayd2.p2b.conference_service_api.feature.attendance.application.user.GetUserAttendanceUseCase;
 import ayd2.p2b.conference_service_api.feature.attendance.dto.internal.AttendanceRequesterContext;
 import ayd2.p2b.conference_service_api.feature.attendance.dto.internal.AttendanceSearchCriteria;
 import ayd2.p2b.conference_service_api.feature.attendance.dto.request.RegisterAttendanceRequest;
@@ -34,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -48,13 +50,16 @@ public class AttendanceController {
 
     private final RegisterAttendanceUseCase registerAttendanceUseCase;
     private final ListAttendanceUseCase listAttendanceUseCase;
+    private final GetUserAttendanceUseCase getUserAttendanceUseCase;
 
     public AttendanceController(
             RegisterAttendanceUseCase registerAttendanceUseCase,
-            ListAttendanceUseCase listAttendanceUseCase
+            ListAttendanceUseCase listAttendanceUseCase,
+            GetUserAttendanceUseCase getUserAttendanceUseCase
     ) {
         this.registerAttendanceUseCase = registerAttendanceUseCase;
         this.listAttendanceUseCase = listAttendanceUseCase;
+        this.getUserAttendanceUseCase = getUserAttendanceUseCase;
     }
 
     @PostMapping("/attendance/register")
@@ -129,6 +134,31 @@ public class AttendanceController {
         Pageable pageable = normalizePageable(page, size);
         PageResponse<AttendanceResponse> response = listAttendanceUseCase.execute(criteria, pageable, requester);
         return ResponseEntity.ok(ApiResponse.of(response));
+    }
+
+    @GetMapping("/users/{userId}/attendance")
+    @Operation(
+            summary = "List attendance records for a participant (self only)",
+            description = "Returns all attendance records owned by the authenticated user. The path userId must match the authenticated userId.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            responses = {
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Attendance records returned"),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content)
+            }
+    )
+    public ResponseEntity<ApiResponse<List<AttendanceResponse>>> listUserAttendance(
+            @org.springframework.web.bind.annotation.PathVariable UUID userId,
+            Authentication authentication
+    ) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof AuthenticatedUser user)) {
+            throw AttendanceExceptions.forbidden("Authentication required");
+        }
+        if (!userId.equals(user.getUserId())) {
+            throw AttendanceExceptions.forbidden("Cannot access another user's attendance");
+        }
+        List<AttendanceResponse> items = getUserAttendanceUseCase.execute(userId);
+        return ResponseEntity.ok(ApiResponse.of(items));
     }
 
     private AttendanceRequesterContext buildRequesterContext(Authentication authentication, String authorization) {

@@ -93,11 +93,17 @@ public class ParticipantsReportUseCase {
                         ? List.of()
                         : new ArrayList<>(row.getParticipationTypes()));
         if (detail != null) {
-            builder.personalId(detail.getPersonalId())
-                    .fullName(detail.getFullName())
-                    .organization(detail.getOrganization())
-                    .email(detail.getEmail())
-                    .phone(detail.getPhone());
+            builder.personalId(detail.getPersonalId() != null ? detail.getPersonalId() : "")
+                    .fullName(detail.getFullName() != null ? detail.getFullName() : "")
+                    .organization(detail.getOrganization() != null ? detail.getOrganization() : "")
+                    .email(detail.getEmail() != null ? detail.getEmail() : "")
+                    .phone(detail.getPhone() != null ? detail.getPhone() : "");
+        } else {
+            builder.personalId("")
+                    .fullName("")
+                    .organization("")
+                    .email("")
+                    .phone("");
         }
         return builder.build();
     }
