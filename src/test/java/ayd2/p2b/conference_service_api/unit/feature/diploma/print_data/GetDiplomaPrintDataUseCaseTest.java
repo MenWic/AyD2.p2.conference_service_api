@@ -27,6 +27,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,13 +54,29 @@ class GetDiplomaPrintDataUseCaseTest {
 
         when(diplomaRepositoryPort.findResponseById(diplomaId)).thenReturn(Optional.of(response));
         when(iamUserLookupPort.getUsersSummary(Set.of(userId), accessToken))
-                .thenReturn(Map.of(userId, IamUserSummary.builder().id(userId).fullName("María Pérez").build()));
+                .thenReturn(Map.of(userId, IamUserSummary.builder().id(userId).fullName("Maria Perez").build()));
 
         DiplomaPrintDataResponse result = useCase.execute(diplomaId, requester(userId, accessToken));
 
         assertThat(result.getDiplomaId()).isEqualTo(diplomaId);
         assertThat(result.getUserId()).isEqualTo(userId);
-        assertThat(result.getUserFullName()).isEqualTo("María Pérez");
+        assertThat(result.getUserFullName()).isEqualTo("Maria Perez");
+    }
+
+    @Test
+    void shouldPassRawAccessTokenToIamLookup() {
+        UUID diplomaId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        String accessToken = "raw-token-only";
+        DiplomaResponse response = participationResponse(diplomaId, userId);
+
+        when(diplomaRepositoryPort.findResponseById(diplomaId)).thenReturn(Optional.of(response));
+        when(iamUserLookupPort.getUsersSummary(Set.of(userId), accessToken))
+                .thenReturn(Map.of(userId, IamUserSummary.builder().id(userId).fullName("Maria Perez").build()));
+
+        useCase.execute(diplomaId, requester(userId, accessToken));
+
+        verify(iamUserLookupPort).getUsersSummary(Set.of(userId), accessToken);
     }
 
     @Test
@@ -135,6 +152,26 @@ class GetDiplomaPrintDataUseCaseTest {
     }
 
     @Test
+    void blankIamFullNameShouldReturn503() {
+        UUID diplomaId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        String accessToken = "raw-token";
+        DiplomaResponse response = participationResponse(diplomaId, userId);
+
+        when(diplomaRepositoryPort.findResponseById(diplomaId)).thenReturn(Optional.of(response));
+        when(iamUserLookupPort.getUsersSummary(Set.of(userId), accessToken))
+                .thenReturn(Map.of(userId, IamUserSummary.builder().id(userId).fullName("   ").build()));
+
+        assertThatThrownBy(() -> useCase.execute(diplomaId, requester(userId, accessToken)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> {
+                    ApiException apiException = (ApiException) ex;
+                    assertThat(apiException.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                    assertThat(apiException.getCode()).isEqualTo("integration.iam_unavailable");
+                });
+    }
+
+    @Test
     void participationShouldReturnNullActivityFields() {
         UUID diplomaId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -143,7 +180,7 @@ class GetDiplomaPrintDataUseCaseTest {
 
         when(diplomaRepositoryPort.findResponseById(diplomaId)).thenReturn(Optional.of(response));
         when(iamUserLookupPort.getUsersSummary(Set.of(userId), accessToken))
-                .thenReturn(Map.of(userId, IamUserSummary.builder().id(userId).fullName("María Pérez").build()));
+                .thenReturn(Map.of(userId, IamUserSummary.builder().id(userId).fullName("Maria Perez").build()));
 
         DiplomaPrintDataResponse result = useCase.execute(diplomaId, requester(userId, accessToken));
 
@@ -172,7 +209,7 @@ class GetDiplomaPrintDataUseCaseTest {
 
         when(diplomaRepositoryPort.findResponseById(diplomaId)).thenReturn(Optional.of(response));
         when(iamUserLookupPort.getUsersSummary(eq(Set.of(userId)), eq(accessToken)))
-                .thenReturn(Map.of(userId, IamUserSummary.builder().id(userId).fullName("María Pérez").build()));
+                .thenReturn(Map.of(userId, IamUserSummary.builder().id(userId).fullName("Maria Perez").build()));
 
         DiplomaPrintDataResponse result = useCase.execute(diplomaId, requester(userId, accessToken));
 

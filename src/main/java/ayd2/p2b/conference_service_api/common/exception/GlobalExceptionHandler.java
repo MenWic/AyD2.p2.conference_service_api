@@ -18,6 +18,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -131,6 +132,15 @@ public class GlobalExceptionHandler {
                 HttpStatus.UNPROCESSABLE_ENTITY,
                 ex.getMessage());
         detail.setProperty("code", "domain.invariant_violated");
+        return detail;
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ProblemDetail handleNoResourceFound(NoResourceFoundException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.NOT_FOUND,
+                "Resource not found");
+        detail.setProperty("code", "resource.not_found");
         return detail;
     }
 
