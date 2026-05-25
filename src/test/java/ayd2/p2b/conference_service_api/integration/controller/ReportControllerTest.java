@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.integration.controller;
 
 import ayd2.p2b.conference_service_api.feature.report.application.attendance_summary.AttendanceByActivityReportUseCase;
 import ayd2.p2b.conference_service_api.feature.report.application.congresses_by_institution.CongressesByInstitutionReportUseCase;
+import ayd2.p2b.conference_service_api.feature.report.application.exception.ReportExceptions;
 import ayd2.p2b.conference_service_api.feature.report.application.participants.ParticipantsReportUseCase;
 import ayd2.p2b.conference_service_api.feature.report.application.workshop_reservations.WorkshopReservationsReportUseCase;
 import ayd2.p2b.conference_service_api.feature.report.dto.response.AttendanceActivityItem;
@@ -188,7 +189,32 @@ class ReportControllerTest {
 
         mockMvc.perform(get("/reports/congresses-by-institution")
                         .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists())
+                .andExpect(jsonPath("$.data.totalItems").value(0));
+    }
+
+    @Test
+    void congresses_by_institution_with_invalid_format_returns_400() throws Exception {
+        String token = buildToken(USER_ID, "SYSTEM_ADMIN");
+
+        mockMvc.perform(get("/reports/congresses-by-institution")
+                        .param("format", "pdf")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation.failed"));
+    }
+
+    @Test
+    void congresses_by_institution_forbidden_from_use_case_maps_to_403() throws Exception {
+        String token = buildToken(USER_ID, "SYSTEM_ADMIN");
+        when(congressesByInstitutionReportUseCase.execute(any(), any(), any()))
+                .thenThrow(ReportExceptions.forbidden("Only SYSTEM_ADMIN"));
+
+        mockMvc.perform(get("/reports/congresses-by-institution")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("auth.forbidden"));
     }
 
     @Test
