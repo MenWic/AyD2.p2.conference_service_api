@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.attendance.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.attendance.application.exception.AttendanceExceptions;
 import ayd2.p2b.conference_service_api.feature.attendance.application.list.ListAttendanceUseCase;
@@ -11,6 +12,8 @@ import ayd2.p2b.conference_service_api.feature.attendance.dto.internal.Attendanc
 import ayd2.p2b.conference_service_api.feature.attendance.dto.request.RegisterAttendanceRequest;
 import ayd2.p2b.conference_service_api.feature.attendance.dto.response.AttendanceResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -57,16 +60,17 @@ public class AttendanceController {
     @PostMapping("/attendance/register")
     @Operation(
             summary = "Register attendance for an activity participant",
+            description = "Registers immutable attendance using activityId + personalId. personalId is resolved through IAM. TALLER requires reservation; PONENCIA does not.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Attendance registered"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR))),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token invalid", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Activity or participant not found", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Attendance conflict", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Domain invariant violated", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "IAM unavailable", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "IAM unavailable", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.IAM_UNAVAILABLE_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<AttendanceResponse>> registerAttendance(
@@ -82,6 +86,7 @@ public class AttendanceController {
     @GetMapping("/attendance")
     @Operation(
             summary = "List attendance records with filters",
+            description = "Returns immutable attendance records scoped to CONGRESS_ADMIN owner/scoped access. Supports filters by activity, room, date range, and personalId.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Attendances listed"),
@@ -92,12 +97,19 @@ public class AttendanceController {
             }
     )
     public ResponseEntity<ApiResponse<PageResponse<AttendanceResponse>>> listAttendance(
+            @Parameter(description = "Activity filter (UUID)", example = "3a6d8f8e-a077-4a66-a7d3-c8dd90666fc2")
             @RequestParam(required = false) UUID activityId,
+            @Parameter(description = "Room filter (UUID)", example = "f39f1f7f-e2d2-4f2e-8cb8-95630f1a9f8e")
             @RequestParam(required = false) UUID roomId,
+            @Parameter(description = "Date range start (yyyy-MM-dd, inclusive)", example = "2026-10-10")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @Parameter(description = "Date range end (yyyy-MM-dd, inclusive)", example = "2026-10-12")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @Parameter(description = "Exact personalId filter (trimmed, case-insensitive)", example = "A1234567")
             @RequestParam(required = false) String personalId,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             Authentication authentication

@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.institution.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.institution.application.create.CreateInstitutionUseCase;
 import ayd2.p2b.conference_service_api.feature.institution.application.delete.DeleteInstitutionUseCase;
@@ -13,6 +14,8 @@ import ayd2.p2b.conference_service_api.feature.institution.dto.request.CreateIns
 import ayd2.p2b.conference_service_api.feature.institution.dto.request.UpdateInstitutionRequest;
 import ayd2.p2b.conference_service_api.feature.institution.dto.response.InstitutionResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,12 +74,13 @@ public class InstitutionController {
     @PostMapping
     @Operation(
             summary = "Create institution",
+            description = "Creates an institution. Requires SYSTEM_ADMIN role.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Institution created"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Name conflict", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.TOKEN_INVALID_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.FORBIDDEN_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Name conflict", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.CONFLICT_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<InstitutionResponse>> createInstitution(
@@ -94,15 +98,20 @@ public class InstitutionController {
     @GetMapping
     @Operation(
             summary = "List active institutions",
+            description = "Returns paginated active institutions. Public endpoint.",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Institutions listed"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.VALIDATION_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<PageResponse<InstitutionResponse>>> listInstitutions(
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size,
+            @Parameter(description = "Sort field", example = "name")
             @RequestParam(defaultValue = "name") String sortBy,
+            @Parameter(description = "Sort direction", example = "asc")
             @RequestParam(defaultValue = "asc") String sortDir
     ) {
         Pageable pageable = normalizePageable(page, size, sortBy, sortDir);
@@ -113,12 +122,13 @@ public class InstitutionController {
     @GetMapping("/{id}")
     @Operation(
             summary = "Get active institution by id",
+            description = "Returns an active institution by UUID. Public endpoint.",
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Institution found"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.NOT_FOUND_ERROR)))
             }
     )
-    public ResponseEntity<ApiResponse<InstitutionResponse>> getInstitution(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<InstitutionResponse>> getInstitution(@Parameter(description = "Institution identifier (UUID)") @PathVariable UUID id) {
         InstitutionResponse response = getInstitutionUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.of(response));
     }
@@ -126,6 +136,7 @@ public class InstitutionController {
     @PutMapping("/{id}")
     @Operation(
             summary = "Update institution",
+            description = "Updates an institution. Requires SYSTEM_ADMIN role.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Institution updated"),
@@ -148,6 +159,7 @@ public class InstitutionController {
     @DeleteMapping("/{id}")
     @Operation(
             summary = "Soft-delete institution",
+            description = "Sets institution as inactive. Blocked when congresses are associated. Requires SYSTEM_ADMIN role.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Institution deactivated"),

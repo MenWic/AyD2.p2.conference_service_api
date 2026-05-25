@@ -2,6 +2,7 @@ package ayd2.p2b.conference_service_api.feature.diploma.controller;
 
 import ayd2.p2b.conference_service_api.common.response.ApiResponse;
 import ayd2.p2b.conference_service_api.common.response.PageResponse;
+import ayd2.p2b.conference_service_api.core.openapi.OpenApiExamples;
 import ayd2.p2b.conference_service_api.core.security.AuthenticatedUser;
 import ayd2.p2b.conference_service_api.feature.diploma.application.exception.DiplomaExceptions;
 import ayd2.p2b.conference_service_api.feature.diploma.application.get.GetDiplomaMetadataUseCase;
@@ -11,6 +12,8 @@ import ayd2.p2b.conference_service_api.feature.diploma.dto.internal.DiplomaReque
 import ayd2.p2b.conference_service_api.feature.diploma.dto.response.DiplomaPrintDataResponse;
 import ayd2.p2b.conference_service_api.feature.diploma.dto.response.DiplomaResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -56,17 +59,20 @@ public class DiplomaController {
     @GetMapping("/users/{id}/diplomas")
     @Operation(
             summary = "List user diplomas (self only)",
+            description = "Lists materialized diplomas for the participant owner. Eligibility materialization is idempotent and returns available=true records only.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Diplomas listed"),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "User not found", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.TOKEN_INVALID_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.FORBIDDEN_ERROR))),
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "User not found", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.NOT_FOUND_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<PageResponse<DiplomaResponse>>> listUserDiplomas(
             @PathVariable("id") UUID userId,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size (max 100)", example = "20")
             @RequestParam(defaultValue = "20") int size,
             Authentication authentication
     ) {
@@ -79,6 +85,7 @@ public class DiplomaController {
     @GetMapping("/diplomas/{id}")
     @Operation(
             summary = "Get diploma metadata",
+            description = "Returns diploma metadata for the participant owner. No eligibility recalculation or materialization is performed.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Diploma metadata"),
@@ -99,13 +106,14 @@ public class DiplomaController {
     @GetMapping("/diplomas/{id}/print-data")
     @Operation(
             summary = "Get official diploma print data",
+            description = "Returns official print-data JSON for SPA-side PDF generation. Conference does not generate binary PDF.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Diploma print data"),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden", content = @Content),
                     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Diploma not found", content = @Content),
-                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "IAM unavailable", content = @Content)
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "IAM unavailable", content = @Content(mediaType = "application/problem+json", examples = @ExampleObject(value = OpenApiExamples.IAM_UNAVAILABLE_ERROR)))
             }
     )
     public ResponseEntity<ApiResponse<DiplomaPrintDataResponse>> getDiplomaPrintData(

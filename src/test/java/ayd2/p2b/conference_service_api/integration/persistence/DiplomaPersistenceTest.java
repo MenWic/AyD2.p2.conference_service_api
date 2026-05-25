@@ -118,21 +118,58 @@ class DiplomaPersistenceTest {
     }
 
     @Test
-    void shouldRestrictDeletingCongressAndActivityWhenDiplomaExists() {
-        ActivityContext context = persistedActivityContext();
-
-        diplomaRepository.saveAndFlush(newParticipationDiploma(UUID.randomUUID(), context.congressId()));
-        diplomaRepository.saveAndFlush(newLeadershipDiploma(UUID.randomUUID(), context.congressId(), context.activityId()));
+    void shouldRestrictDeletingCongressWhenParticipationDiplomaExists() {
+        UUID congressId = persistedCongressOnly();
+        diplomaRepository.saveAndFlush(newParticipationDiploma(UUID.randomUUID(), congressId));
 
         assertThatThrownBy(() -> {
-            congressRepository.deleteById(context.congressId());
+            congressRepository.deleteById(congressId);
             congressRepository.flush();
-        }).isInstanceOf(DataIntegrityViolationException.class);
+        })
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasRootCauseMessageContaining("fk_diploma_congress");
+    }
+
+    @Test
+    void shouldRestrictDeletingActivityWhenLeadershipDiplomaExists() {
+        ActivityContext context = persistedActivityContext();
+        diplomaRepository.saveAndFlush(newLeadershipDiploma(
+                UUID.randomUUID(),
+                context.congressId(),
+                context.activityId()
+        ));
 
         assertThatThrownBy(() -> {
             activityRepository.deleteById(context.activityId());
             activityRepository.flush();
-        }).isInstanceOf(DataIntegrityViolationException.class);
+        })
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasRootCauseMessageContaining("fk_diploma_activity");
+    }
+
+    private UUID persistedCongressOnly() {
+        UUID adminId = UUID.randomUUID();
+
+        InstitutionEntity institution = new InstitutionEntity();
+        institution.setName("Diploma Institution " + UUID.randomUUID());
+        institution.setDescription("Institution for diploma congress FK test");
+        institution.setContactEmail(UUID.randomUUID() + "@example.com");
+        institution.setActive(true);
+        institution.setCreatedBy(adminId);
+        institutionRepository.saveAndFlush(institution);
+
+        CongressEntity congress = new CongressEntity();
+        congress.setInstitutionId(institution.getId());
+        congress.setName("Diploma Congress " + UUID.randomUUID());
+        congress.setDescription("Congress for diploma FK test");
+        congress.setStartDate(LocalDate.of(2026, 11, 1));
+        congress.setEndDate(LocalDate.of(2026, 11, 2));
+        congress.setLocation("Guatemala");
+        congress.setPrice(new BigDecimal("45.00"));
+        congress.setCreatedBy(adminId);
+        congressRepository.saveAndFlush(congress);
+
+        return congress.getId();
     }
 
     private DiplomaEntity newParticipationDiploma(UUID userId, UUID congressId) {
